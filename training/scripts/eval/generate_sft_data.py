@@ -1,5 +1,8 @@
 """生成 legacy SFT 数据。
 
+注意：这是 legacy 兼容脚本，仅用于旧版 SFT/DPO/eval 流程复现，不是当前 SFT 主线入口。
+新数据请使用 `training/scripts/planner/data/generate_sft_data.py`。
+
 示例:
 
 1. 先用模板请求做小规模 smoke，不调用强模型生成用户请求:

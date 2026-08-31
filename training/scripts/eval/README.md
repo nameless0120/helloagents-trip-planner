@@ -2,6 +2,8 @@
 
 这里放第二版后训练数据脚本。legacy 的原则是：只合成用户请求，后面的工具快照、PlannerContext、Planner 输入都走当前线上后端协议。当前线上工具召回已经改成“城市经典候选 + 用户偏好候选”的组合，避免只按偏好关键词搜索时漏掉当地经典景点。
 
+> 注意：本目录是 legacy 数据链路。`generate_sft_data.py` 仅用于旧版 SFT/DPO/eval 流程复现，不是当前 SFT 主线入口。新数据请使用 [`planner/data/generate_sft_data.py`](../planner/data/generate_sft_data.py)；两个脚本用途不同，不保持代码同步。
+
 ## Scripts
 
 | Script | Purpose |
