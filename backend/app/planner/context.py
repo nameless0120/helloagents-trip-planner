@@ -7,7 +7,6 @@ from typing import Any, Dict
 from ..models.schemas import TripRequest
 from .amap import AmapPlannerClient
 from .compact import compact_for_planner as compact_planner_context
-from .dates import trip_date_strings, unknown_weather_row
 from .debug import (
     PLANNER_CONTEXT_PRINT_LIMIT,
     print_summary as print_context_summary,

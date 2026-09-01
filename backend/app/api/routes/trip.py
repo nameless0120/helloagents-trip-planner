@@ -4,7 +4,6 @@ from fastapi import APIRouter, HTTPException
 from ...models.schemas import (
     TripRequest,
     TripPlanResponse,
-    ErrorResponse
 )
 from ...agents.trip_planner_agent import get_trip_planner_agent
 
@@ -29,7 +28,7 @@ async def plan_trip(request: TripRequest):
     """
     try:
         print(f"\n{'='*60}")
-        print(f"📥 收到旅行规划请求:")
+        print("📥 收到旅行规划请求:")
         print(f"   城市: {request.city}")
         print(f"   日期: {request.start_date} - {request.end_date}")
         print(f"   天数: {request.travel_days}")

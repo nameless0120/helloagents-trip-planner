@@ -34,7 +34,7 @@ def get_amap_mcp_tool() -> MCPTool:
             auto_expand=True  # 自动展开为独立工具
         )
 
-        print(f"✅ 高德地图MCP工具初始化成功")
+        print("✅ 高德地图MCP工具初始化成功")
         print(f"   工具数量: {len(_amap_mcp_tool._available_tools)}")
 
         # 打印可用工具列表

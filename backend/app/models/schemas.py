@@ -2,7 +2,6 @@
 
 from typing import List, Optional, Union
 from pydantic import BaseModel, Field, field_validator, model_validator
-from datetime import date
 
 
 # ============ 请求模型 ============

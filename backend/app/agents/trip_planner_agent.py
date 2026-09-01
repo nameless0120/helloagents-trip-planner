@@ -73,8 +73,8 @@ class MultiAgentTripPlanner:
                 system_prompt=PLANNER_AGENT_PROMPT
             )
 
-            print(f"✅ 多智能体系统初始化成功")
-            print(f"   工具查询: 高德HTTP API(景点/天气/酒店并行)")
+            print("✅ 多智能体系统初始化成功")
+            print("   工具查询: 高德HTTP API(景点/天气/酒店并行)")
             print(f"   Planner模型: {'个性化模型' if self.planner_llm is not self.tool_llm else '默认模型'}")
 
         except Exception as e:
@@ -96,7 +96,7 @@ class MultiAgentTripPlanner:
         total_started_at = time.perf_counter()
         try:
             print(f"\n{'='*60}")
-            print(f"🚀 开始多智能体协作规划旅行...")
+            print("🚀 开始多智能体协作规划旅行...")
             print(f"目的地: {request.city}")
             print(f"日期: {request.start_date} 至 {request.end_date}")
             print(f"天数: {request.travel_days}天")
@@ -423,7 +423,7 @@ class MultiAgentTripPlanner:
             if not use_fallback:
                 raise
             print(f"⚠️  解析响应失败: {str(e)}")
-            print(f"   将使用备用方案生成计划")
+            print("   将使用备用方案生成计划")
             return create_fallback_plan(request)
 
 

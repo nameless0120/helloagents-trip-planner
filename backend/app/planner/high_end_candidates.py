@@ -170,14 +170,6 @@ def rank_food_meals_with_diversity(
         and not _is_food_high_end_signal(row)
         and _is_quality_local_food(row)
     ]
-    other = [
-        row
-        for row in rows
-        if not row.get("high_end_verified")
-        and not _is_food_high_end_signal(row)
-        and not _is_quality_local_food(row)
-    ]
-
     if budget_level == "luxury":
         quotas = (0.45, 0.35, 0.15)
     elif budget_level == "premium":

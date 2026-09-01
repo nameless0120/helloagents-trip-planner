@@ -1,8 +1,8 @@
 """POI相关API路由"""
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
-from typing import List, Optional
+from pydantic import BaseModel
+from typing import Optional
 from ...config import get_settings
 from ...planner.amap import AmapPlannerClient
 from ...services.amap_service import get_amap_service

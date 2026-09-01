@@ -1,9 +1,7 @@
 """地图服务API路由"""
 
 from fastapi import APIRouter, HTTPException, Query
-from typing import Optional
 from ...models.schemas import (
-    POISearchRequest,
     POISearchResponse,
     RouteRequest,
     RouteResponse,
