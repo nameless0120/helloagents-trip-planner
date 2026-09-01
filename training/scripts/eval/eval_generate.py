@@ -10,8 +10,8 @@
 
   # 评估 SFT 服务
   .venv-training-py311/bin/python3 training/scripts/eval/eval_generate.py \
-    --model-name sft_legacy_clean \
-    --api-model trip-planner-sft-legacy-clean \
+    --model-name sft_qwen25_7b \
+    --api-model trip-planner-sft \
     --base-url http://127.0.0.1:4396/v1
 """
 
@@ -135,9 +135,9 @@ def generate_one(record: dict[str, Any], args: argparse.Namespace) -> dict[str, 
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="生成 legacy eval 输出。")
+    parser = argparse.ArgumentParser(description="生成 Planner 评测输出。")
     parser.add_argument("--records", type=Path, default=DEFAULT_EVAL_RECORDS)
-    parser.add_argument("--model-name", required=True, help="评估运行名称，例如 base_qwen25_7b / sft_legacy_clean")
+    parser.add_argument("--model-name", required=True, help="评估运行名称，例如 base_qwen25_7b / sft_qwen25_7b")
     parser.add_argument("--api-model", required=True, help="OpenAI API model 参数")
     parser.add_argument("--base-url", default="http://127.0.0.1:4396/v1")
     parser.add_argument("--api-key", default=None)
@@ -155,7 +155,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-tokens-cap", type=int, default=16000)
     parser.add_argument("--trust-env", action="store_true", help="允许 httpx 读取 HTTP_PROXY/HTTPS_PROXY 等环境代理")
     parser.add_argument("--no-auto-openai-path", action="store_true", help="不要自动给 base_url 补 /v1")
-    parser.add_argument("--resume-include-failed", action="store_true", help="兼容旧行为：--resume 时失败样本也跳过")
+    parser.add_argument("--resume-include-failed", action="store_true", help="resume 时重新纳入此前失败的样本")
     return parser.parse_args()
 
 

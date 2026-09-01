@@ -78,7 +78,7 @@ def main() -> None:
 
     summary = {
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "source_records": str(args.records),
+        "input_records": str(args.records),
         "source_classification": str(args.classification),
         "category": args.category,
         "records": len(subset),
@@ -159,7 +159,7 @@ def render_readme(summary: dict[str, Any]) -> str:
             "## 内容",
             "",
             f"- 样本数：{summary['records']}",
-            f"- 来源 records：`{summary['source_records']}`",
+            f"- 输入 records：`{summary['input_records']}`",
             f"- 来源分类：`{summary['source_classification']}`",
             "- 判定口径：来自 `record_classification.jsonl` 的 category 字段。",
             "",

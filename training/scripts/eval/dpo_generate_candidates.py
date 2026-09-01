@@ -1,9 +1,9 @@
-"""为 legacy DPO prompts 生成多模型自然候选。
+"""为 DPO prompts 生成多模型自然候选。
 
 示例:
 
   .venv-training-py311/bin/python3 training/scripts/eval/dpo_generate_candidates.py \
-    --prompts training/data/legacy/dpo/prompts.jsonl \
+    --prompts training/data/planner/dpo/prompts.jsonl \
     --workers 1 \
     --resume
 
@@ -368,7 +368,7 @@ def build_specs(args: argparse.Namespace) -> list[CandidateSpec]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="为 legacy DPO prompt 生成多候选。")
+    parser = argparse.ArgumentParser(description="为 DPO prompt 生成多候选。")
     parser.add_argument("--prompts", type=Path, default=DEFAULT_DPO_PROMPTS)
     parser.add_argument("--output", type=Path, default=DEFAULT_DPO_CANDIDATES)
     parser.add_argument("--workers", type=int, default=1)
@@ -387,7 +387,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-base-high", action="store_true")
 
     parser.add_argument("--sft-base-url", default="http://127.0.0.1:4396/v1")
-    parser.add_argument("--sft-api-model", default="trip-planner-sft-legacy-clean")
+    parser.add_argument("--sft-api-model", default="trip-planner-sft")
     parser.add_argument("--sft-low-temperature", type=float, default=0.2)
     parser.add_argument("--sft-low-count", type=int, default=1)
     parser.add_argument("--no-sft-low", action="store_true")

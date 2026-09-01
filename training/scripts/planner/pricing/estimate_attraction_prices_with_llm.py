@@ -20,7 +20,7 @@ SCRIPTS_DIR = ROOT / "training/scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from shared.common import read_jsonl, write_json, write_jsonl  # noqa: E402
+from shared.common import read_jsonl, write_json  # noqa: E402
 from shared.llm_client import DataGenLLM  # noqa: E402
 
 

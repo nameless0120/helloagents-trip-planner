@@ -29,7 +29,6 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 SCRIPTS_DIR = PROJECT_ROOT / "training" / "scripts"
-LEGACY_SCRIPTS_DIR = SCRIPTS_DIR / "legacy"
 EVAL_SCRIPTS_DIR = Path(__file__).resolve().parent
 DATA_SCRIPTS_DIR = SCRIPTS_DIR / "planner" / "data"
 BACKEND_DIR = PROJECT_ROOT / "backend"
@@ -37,7 +36,6 @@ sys.path[:0] = [
     str(EVAL_SCRIPTS_DIR),
     str(DATA_SCRIPTS_DIR),
     str(SCRIPTS_DIR),
-    str(LEGACY_SCRIPTS_DIR),
     str(BACKEND_DIR),
 ]
 
@@ -401,9 +399,9 @@ def rebalance_eval_budget(
     item = dict(raw_request)
     spec = dict(item.get("control_spec") or {})
     budget_constraint = dict(item.get("budget_constraint") or {})
-    old_amount = int(budget_constraint.get("amount") or 0)
-    old_level = str(budget_constraint.get("budget_level") or spec.get("budget_level") or "standard")
-    budget_level = "premium" if old_level == "luxury" else old_level
+    original_amount = int(budget_constraint.get("amount") or 0)
+    original_level = str(budget_constraint.get("budget_level") or spec.get("budget_level") or "standard")
+    budget_level = "premium" if original_level == "luxury" else original_level
     party = item.get("party") or {}
     city_tier = spec.get("city_tier") or infer_city_tier(str(item.get("city") or ""))
     rng = random.Random(args.seed * 2017 + index)
@@ -421,26 +419,28 @@ def rebalance_eval_budget(
     budget_constraint["amount"] = amount
     budget_constraint["budget_level"] = budget_level
     item["budget_constraint"] = budget_constraint
-    item["free_text_input"] = replace_budget_amount_text(str(item.get("free_text_input") or ""), old_amount, amount)
+    item["free_text_input"] = replace_budget_amount_text(
+        str(item.get("free_text_input") or ""), original_amount, amount
+    )
 
     spec.update(
         {
             "budget_level": budget_level,
             "budget_amount": amount,
             "eval_budget_party_mode": "linear_person_shared_transport",
-            "eval_budget_policy_version": "realistic_budget_20260507",
+            "eval_budget_policy_version": "realistic_budget_v1",
         }
     )
-    if old_level == "luxury":
-        spec["eval_budget_level_rebased_from"] = old_level
+    if original_level == "luxury":
+        spec["eval_budget_level_rebased_from"] = original_level
     item["control_spec"] = spec
     return item
 
 
-def replace_budget_amount_text(text: str, old_amount: int, new_amount: int) -> str:
+def replace_budget_amount_text(text: str, original_amount: int, new_amount: int) -> str:
     """替换自由文本中的预算金额；hard profile 通常没有显式金额。"""
-    if old_amount > 0 and f"{old_amount}元" in text:
-        return text.replace(f"{old_amount}元", f"{new_amount}元")
+    if original_amount > 0 and f"{original_amount}元" in text:
+        return text.replace(f"{original_amount}元", f"{new_amount}元")
     return text
 
 

@@ -18,14 +18,8 @@ from eval_utils import (
     context_snapshot,
     counter_to_dict,
     hotel_room_count,
-    is_hotel_breakfast_name,
-    is_placeholder_hotel_distance,
-    is_placeholder_meal_name,
-    is_lodging_breakfast_meal,
     load_records_by_id,
     metric_rate,
-    model_run_dir,
-    name_in_candidates,
     normalize_weather_value,
     parse_trip_plan_output,
     percentile,
@@ -35,6 +29,12 @@ from eval_utils import (
     trip_dates,
     weather_bucket,
     write_json,
+)
+from app.planner.output import (  # noqa: E402
+    is_lodging_breakfast_meal,
+    is_placeholder_hotel_distance,
+    is_placeholder_meal_name,
+    name_in_candidates,
 )
 
 
@@ -332,7 +332,6 @@ def evaluate_output(record: dict[str, Any], generation: dict[str, Any]) -> dict[
     result["budget_relationship_eval"] = budget_relationship_eval
     result["recomputed_budget"] = recomputed_budget
     result["recomputed_budget_eval"] = recomputed_budget_eval
-    # 保留旧指标名，方便和已有报告/对比脚本兼容；新指标名更明确。
     metrics["budget_consistent"] = budget_eval["arithmetic_consistent"]
     metrics["budget_arithmetic_consistent"] = budget_eval["arithmetic_consistent"]
     metrics["attraction_budget_consistent"] = reported_attraction_budget == expected_attraction_budget
@@ -420,28 +419,6 @@ def evaluate_output(record: dict[str, Any], generation: dict[str, Any]) -> dict[
         "recomputed_budget_user_constraint_ok",
         "recomputed_budget_fit_ok",
     ]
-    legacy_hard_keys = [
-        "json_extract_ok",
-        "schema_ok",
-        "city_ok",
-        "date_range_ok",
-        "days_len_ok",
-        "day_dates_ok",
-        "weather_dates_ok",
-        "day_index_ok",
-        "meal_complete",
-        "meal_specific_ok",
-        "meal_valid_semantics_ok",
-        "meal_diversity_ok",
-        "attraction_count_ok",
-        "middle_hotel_ok",
-        "invalid_hotel_name_ok",
-        "hotel_distance_placeholder_ok",
-        "location_object_ok",
-        "budget_arithmetic_consistent",
-        "hotel_budget_covers_nights",
-        "weather_match",
-    ]
     budget_sum_hard_excluded_keys = {
         # Reported budget ledger math is diagnostic for now. Production can
         # recompute these deterministic fields from selected POIs and party.
@@ -462,7 +439,6 @@ def evaluate_output(record: dict[str, Any], generation: dict[str, Any]) -> dict[
         metrics.get(key) for key in dpo_soft_recomputed_budget_keys
     )
     metrics["planner_soft_pass"] = metrics["sft_hard_pass"] and all(metrics.get(key) for key in planner_soft_keys)
-    metrics["legacy_hard_pass"] = all(metrics.get(key) for key in legacy_hard_keys)
     semantic_budget_hard_keys = [
         key
         for key in sft_hard_keys
@@ -1002,7 +978,7 @@ def write_markdown(path: Path, report: dict[str, Any], results: list[dict[str, A
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="规则评估 legacy eval 生成结果。")
+    parser = argparse.ArgumentParser(description="评估 Planner 生成结果。")
     parser.add_argument("--records", type=Path, default=DEFAULT_EVAL_RECORDS)
     parser.add_argument("--generations", type=Path, default=None)
     parser.add_argument("--model-name", required=True)

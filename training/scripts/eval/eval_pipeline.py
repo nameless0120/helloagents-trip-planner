@@ -1,4 +1,4 @@
-"""legacy Planner 评估流水线入口。
+"""Planner 评估流水线入口。
 
 该脚本负责串联：
 
@@ -31,7 +31,7 @@ def run_step(cmd: list[str], dry_run: bool = False) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="运行 legacy Planner 单模型评估流水线。")
+    parser = argparse.ArgumentParser(description="运行 Planner 单模型评估流水线。")
     parser.add_argument("--records", type=Path, default=DEFAULT_EVAL_RECORDS)
     parser.add_argument("--model-name", required=True)
     parser.add_argument("--api-model", required=True)
@@ -47,7 +47,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-tokens", type=int, default=0)
     parser.add_argument("--trust-env", action="store_true", help="允许本地模型请求读取 HTTP_PROXY/HTTPS_PROXY 等环境代理")
     parser.add_argument("--no-auto-openai-path", action="store_true", help="不要自动给 base_url 补 /v1")
-    parser.add_argument("--resume-include-failed", action="store_true", help="兼容旧行为：--resume 时失败样本也跳过")
+    parser.add_argument("--resume-include-failed", action="store_true", help="resume 时重新纳入此前失败的样本")
     parser.add_argument("--skip-generate", action="store_true")
     parser.add_argument("--skip-rule", action="store_true")
     parser.add_argument("--run-judge", action="store_true")

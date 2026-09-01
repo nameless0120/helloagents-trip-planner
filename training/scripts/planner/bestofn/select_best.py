@@ -13,12 +13,10 @@ from typing import Any
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
-LEGACY_SCRIPTS_DIR = PROJECT_ROOT / "training/scripts/eval"
-if not LEGACY_SCRIPTS_DIR.exists():
-    LEGACY_SCRIPTS_DIR = PROJECT_ROOT / "training/scripts/eval"
+EVAL_SCRIPTS_DIR = PROJECT_ROOT / "training/scripts/eval"
 BACKEND_DIR = PROJECT_ROOT / "backend"
 sys.path.insert(0, str(BACKEND_DIR))
-sys.path.insert(0, str(LEGACY_SCRIPTS_DIR))
+sys.path.insert(0, str(EVAL_SCRIPTS_DIR))
 
 from eval_utils import read_jsonl, write_json, write_jsonl  # noqa: E402
 
@@ -245,7 +243,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--selected-output", type=Path, default=DEFAULT_SELECTED)
     parser.add_argument("--summary-output", type=Path, default=None)
     parser.add_argument("--val-ratio", type=float, default=0.1)
-    parser.add_argument("--seed", type=int, default=20260511)
+    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--no-hard-gate", action="store_true", help="Allow a non-hardpass winner even if hardpass candidates exist.")
     parser.add_argument("--rejected-allow-nonschema", action="store_true")
     parser.add_argument("--lf-sft-train", type=Path, default=None)

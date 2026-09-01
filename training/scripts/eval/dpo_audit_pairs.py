@@ -1,4 +1,4 @@
-"""生成 legacy DPO 数据审计报告。"""
+"""生成 DPO 数据审计报告。"""
 
 from __future__ import annotations
 

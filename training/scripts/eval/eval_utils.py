@@ -1,4 +1,4 @@
-"""legacy Planner 模型评估公共工具。"""
+"""Planner 模型评估公共工具。"""
 
 from __future__ import annotations
 
@@ -34,17 +34,11 @@ sys.path.insert(0, str(BACKEND_DIR))
 
 from app.planner.output import (  # noqa: E402
     extract_json_object,
-    is_hotel_breakfast_name,
-    is_invalid_hotel_name,
-    is_lodging_breakfast_meal,
-    is_placeholder_hotel_distance,
-    is_placeholder_meal_name,
-    name_in_candidates,
 )
-from app.models.schemas import TripPlan, TripRequest  # noqa: E402
+from app.models.schemas import TripPlan  # noqa: E402
 
 
-DEFAULT_EVAL_RECORDS = PROJECT_ROOT / "training/data/legacy/sft/records_eval.jsonl"
+DEFAULT_EVAL_RECORDS = PROJECT_ROOT / "training/data/planner/eval/records.jsonl"
 DEFAULT_EVAL_OUTPUT_DIR = PROJECT_ROOT / "training/outputs/eval"
 WEATHER_KEYS = ["day_weather", "night_weather", "day_temp", "night_temp", "wind_direction", "wind_power"]
 
@@ -229,30 +223,8 @@ def sum_budget_parts(budget: dict[str, Any] | None) -> tuple[int, int]:
     return part_sum, total
 
 
-def estimate_party_size(record: dict[str, Any]) -> int:
-    """粗略估计出行人数，用于把“人均预算”转换成总预算。
-
-    训练数据没有显式人数，这是评估侧的弱规则。宁愿宽松一点，也不要把
-    “预算明显超支”和“合理少花钱”混在一起。
-    """
-    request = record.get("request") or {}
-    control = record.get("control_spec") or {}
-    text = str(request.get("free_text_input") or "")
-    companion_type = str(control.get("companion_type") or "")
-
-    if re.search(r"独自|一个人|单人", text) or companion_type == "solo":
-        return 1
-    if re.search(r"情侣|夫妻|两个人|2人", text) or companion_type == "couple":
-        return 2
-    if re.search(r"爸妈|父母|老人|带娃|孩子|亲子", text) or companion_type in {"family_child", "family_elder"}:
-        return 3
-    if re.search(r"朋友|同学", text) or companion_type in {"friends", "friend"}:
-        return 2
-    return 1
-
-
 def structured_party_size(record: dict[str, Any]) -> int:
-    """优先读取 planner 结构化同行人数，旧数据再回退到文本弱规则。"""
+    """读取当前记录中的结构化同行人数。"""
     request = record.get("request") or {}
     contexts = [
         request,
@@ -269,7 +241,7 @@ def structured_party_size(record: dict[str, Any]) -> int:
             total = 0
         if total > 0:
             return total
-    return estimate_party_size(record)
+    return 1
 
 
 def hotel_room_count(record: dict[str, Any]) -> int:
@@ -304,11 +276,7 @@ def budget_fit_policy(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def requested_budget_total(record: dict[str, Any]) -> dict[str, Any]:
-    """抽取用户预算上限。
-
-    planner 优先使用 request.budget_constraint；旧数据再从自由文本里弱抽取。
-    返回结构里 amount 是原始金额，total 是换算后的整趟总预算。
-    """
+    """读取结构化用户预算，并换算为整趟总预算。"""
     constraint = structured_budget_constraint(record)
     request = record.get("request") or {}
     try:
@@ -336,40 +304,13 @@ def requested_budget_total(record: dict[str, Any]) -> dict[str, Any]:
             "strictness": constraint.get("strictness", "none"),
         }
 
-    text = str(request.get("free_text_input") or "")
-    matches = [int(float(item)) for item in re.findall(r"(\d+(?:\.\d+)?)\s*元", text)]
-    if not matches:
-        return {
-            "available": False,
-            "amount": 0,
-            "scope": "unknown",
-            "party_size": structured_party_size(record),
-            "total": 0,
-            "source": "none",
-            "budget_level": constraint.get("budget_level", "unknown"),
-            "strictness": constraint.get("strictness", "none"),
-        }
-
-    amount = max(matches)
-    party_size = structured_party_size(record)
-    days = max(1, int(request.get("travel_days") or 1))
-    per_day_pattern = r"(人均每天|每人每天|一人一天|人均一天|每日预算|每天预算)"
-    if re.search(per_day_pattern, text):
-        scope = "per_person_day"
-        total = amount * party_size * days
-    elif "人均" in text:
-        scope = "per_person_total"
-        total = amount * party_size
-    else:
-        scope = "total"
-        total = amount
     return {
-        "available": True,
-        "amount": amount,
-        "scope": scope,
-        "party_size": party_size,
-        "total": total,
-        "source": "free_text",
+        "available": False,
+        "amount": 0,
+        "scope": "unknown",
+        "party_size": structured_party_size(record),
+        "total": 0,
+        "source": "none",
         "budget_level": constraint.get("budget_level", "unknown"),
         "strictness": constraint.get("strictness", "none"),
     }
@@ -378,8 +319,8 @@ def requested_budget_total(record: dict[str, Any]) -> dict[str, Any]:
 def budget_level_aligned(record: dict[str, Any], budget: dict[str, Any] | None) -> bool:
     """预算消费是否匹配 planner 预算档位/预算贴合策略。
 
-    planner 优先使用 PlannerContext.planner_constraints.budget_fit_policy；
-    旧数据再回退到人均每天粗粒度范围。
+    优先使用 PlannerContext.planner_constraints.budget_fit_policy；
+    如果记录没有冻结策略，再按结构化预算档位检查人均每天范围。
     """
     _, total = sum_budget_parts(budget)
     if total <= 0:

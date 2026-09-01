@@ -63,16 +63,12 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 SCRIPTS_DIR = PROJECT_ROOT / "training" / "scripts"
-LEGACY_SCRIPTS_DIR = SCRIPTS_DIR / "legacy"
-EVAL_SCRIPTS_DIR = SCRIPTS_DIR / "eval"
 BACKEND_DIR = PROJECT_ROOT / "backend"
 sys.path.insert(0, str(SCRIPTS_DIR))
-sys.path.insert(0, str(LEGACY_SCRIPTS_DIR))
-sys.path.insert(0, str(EVAL_SCRIPTS_DIR))
 sys.path.insert(0, str(BACKEND_DIR))
 
-from shared.common import DATA_DIR, LLAMAFACTORY_DIR, load_project_env, read_jsonl, split_train_val, write_json
-from shared.llm_client import DataGenLLM
+from shared.common import DATA_DIR, LLAMAFACTORY_DIR, load_project_env, read_jsonl, split_train_val, write_json  # noqa: E402
+from shared.llm_client import DataGenLLM  # noqa: E402
 
 
 from app.planner.context import PlannerContextBuilder  # noqa: E402
@@ -175,11 +171,6 @@ SCENARIOS = [
     },
 ]
 
-ACCOMMODATION_BY_BUDGET = {
-    "economy": ("经济型酒店", 350),
-    "comfortable": ("舒适型酒店", 800),
-    "premium": ("高端酒店", 1800),
-}
 TRANSPORTATION_OPTIONS = ["公共交通", "打车", "自驾", "地铁+步行"]
 
 CITY_TIERS = {
@@ -246,7 +237,6 @@ PER_PERSON_DAY_BUDGETS = {
 }
 # 预算利用型补数也必须沿用真实预算分档；候选池可达性由 dry-run/context
 # smoke/audit 来筛，不通过单独调窄或平移分档边界来“做漂亮”。
-SUPPLEMENT_PER_PERSON_DAY_BUDGETS = PER_PERSON_DAY_BUDGETS
 
 REQUEST_HOTEL_COST_BY_ACCOMMODATION = {
     "经济型酒店": 300,
@@ -267,28 +257,6 @@ REQUEST_SHARED_TRANSPORT_DAY_COST = {
     "地铁+步行": 60,
     "打车": 220,
     "自驾": 260,
-}
-
-REQUEST_COMPANION_BUDGET_FACTORS = {
-    "solo": 0.95,
-    "couple": 1.0,
-    "friends": 1.04,
-    "business": 1.08,
-    "family_with_children": 1.25,
-    "family_with_elders": 1.38,
-    "family_mixed": 1.45,
-    "other": 1.08,
-}
-
-SUPPLEMENT_COMPANION_BUDGET_FACTORS = {
-    "solo": 0.95,
-    "couple": 1.0,
-    "friends": 1.02,
-    "business": 1.06,
-    "family_with_children": 1.12,
-    "family_with_elders": 1.12,
-    "family_mixed": 1.16,
-    "other": 1.05,
 }
 
 BUDGET_USAGE_RATIO_BY_LEVEL = {
@@ -613,7 +581,6 @@ def normalize_request(data: dict[str, Any], request_id: str) -> TripRequest:
             item["accommodation"],
             item["transportation"],
             control_spec.get("city_tier") or infer_city_tier(item["city"]),
-            control_spec.get("companion_type") or item["party"].get("companion_type") or "other",
         )
         item["budget_constraint"] = build_budget_constraint(rng, budget_level, amount)
 
@@ -660,17 +627,9 @@ def choose_budget_amount(
     accommodation: str,
     transportation: str = "公共交通",
     city_tier: str = "popular",
-    companion_type: str = "other",
-    per_person_day_budgets: dict[str, list[int]] | None = None,
-    companion_budget_factors: dict[str, float] | None = None,
-    party_budget_mode: str = "linear",
 ) -> int:
-    """按 eval realbudget 口径推导整趟总预算，并按百元取整。
-
-    `companion_budget_factors` 和 `party_budget_mode` 保留为旧调用兼容参数，
-    当前主分布不再用 group_discount 压低多人餐饮/门票预算。
-    """
-    budget_table = per_person_day_budgets or PER_PERSON_DAY_BUDGETS
+    """按当前 realbudget 口径推导整趟总预算，并按百元取整。"""
+    budget_table = PER_PERSON_DAY_BUDGETS
     level = "premium" if budget_level == "luxury" else budget_level
     per_person_day = rng.choice(budget_table.get(level, budget_table["standard"]))
     party_total = max(party_total, 1)
@@ -686,15 +645,6 @@ def choose_budget_amount(
     shared_transport_total = shared_transport_day * travel_days
     raw_total = (lodging_total + person_total + shared_transport_total) * city_factor
     return max(500, int(round(raw_total / 100.0) * 100))
-
-
-def budget_party_units(party_total: int, mode: str = "linear") -> float:
-    """预算表达的多人折扣；实际评测仍按人头重算餐饮/门票。"""
-    party_total = max(party_total, 1)
-    if mode == "group_discount":
-        return 1.0 + math.log2(party_total)
-    return float(party_total)
-
 
 def infer_city_tier(city: str) -> str:
     """根据城市名回推预算城市层级。"""
@@ -1113,7 +1063,6 @@ def generate_controlled_request(index: int, args: argparse.Namespace) -> dict[st
         accommodation,
         transportation,
         city_tier,
-        companion_type,
     )
     budget_constraint = build_budget_constraint(
         rng,
@@ -1232,10 +1181,6 @@ def generate_budget_supplement_request(index: int, args: argparse.Namespace) -> 
         accommodation,
         transportation,
         city_tier,
-        companion_type,
-        per_person_day_budgets=SUPPLEMENT_PER_PERSON_DAY_BUDGETS,
-        companion_budget_factors=SUPPLEMENT_COMPANION_BUDGET_FACTORS,
-        party_budget_mode="group_discount",
     )
     budget_constraint = build_budget_constraint(rng, budget_level, budget_amount, strictness=strictness)
     start = choose_controlled_start_date(rng, travel_days, args.date_mode)
@@ -1335,7 +1280,6 @@ def generate_template_requests(
             accommodation,
             transportation,
             infer_city_tier(city),
-            companion_type,
         )
         budget_constraint = build_budget_constraint(rng, budget_level, budget_amount)
         start = choose_start_date(rng, travel_days, date_mode)
@@ -1638,7 +1582,7 @@ def llamafactory_file_name(path: Path) -> str:
 
 
 def configure_output_paths(output_dir: Path | None) -> None:
-    """可选把本轮输出重定向到明确 run 目录，避免污染旧 SFT 入口。"""
+    """可选把本轮输出重定向到明确 run 目录。"""
     global RAW_RECORDS_PATH, ERRORS_PATH, REQUESTS_PATH
     global LLAMAFACTORY_TRAIN_PATH, LLAMAFACTORY_VAL_PATH, REGISTER_LLAMAFACTORY_DATASET
 
@@ -2603,7 +2547,7 @@ def parse_args() -> argparse.Namespace:
         default="mixed",
         help="用户请求日期分布；past/mixed可触发训练专用Open-Meteo历史天气",
     )
-    parser.add_argument("--request-batch-size", type=int, default=20, help="兼容旧命令，当前异步流水线不再使用批量请求生成")
+    parser.add_argument("--request-batch-size", type=int, default=20, help="每批生成请求数；失败时会自动缩小。")
     parser.add_argument("--request-max-tokens", type=int, default=8000)
     parser.add_argument("--request-generation-retries", type=int, default=3)
     parser.add_argument("--disable-template-request-fallback", action="store_true")

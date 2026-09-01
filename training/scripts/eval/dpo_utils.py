@@ -1,4 +1,4 @@
-"""legacy DPO 数据构造公共工具。"""
+"""DPO 数据构造公共工具。"""
 
 from __future__ import annotations
 
@@ -11,29 +11,25 @@ from typing import Any
 
 from eval_utils import (
     average,
-    context_snapshot,
-    metric_rate,
     percentile,
     read_jsonl,
     weather_bucket,
     write_json,
-    write_jsonl,
 )
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-LEGACY_SFT_DIR = PROJECT_ROOT / "training/data/legacy/sft"
-LEGACY_DPO_DIR = PROJECT_ROOT / "training/data/legacy/dpo"
+DPO_DIR = PROJECT_ROOT / "training/data/planner/dpo"
 LLAMAFACTORY_DIR = PROJECT_ROOT / "training/data/llamafactory"
 DATASET_INFO_PATH = LLAMAFACTORY_DIR / "dataset_info.json"
 
-DEFAULT_DPO_PROMPTS = LEGACY_DPO_DIR / "prompts.jsonl"
-DEFAULT_DPO_CANDIDATES = LEGACY_DPO_DIR / "candidates.jsonl"
-DEFAULT_DPO_JUDGEMENTS = LEGACY_DPO_DIR / "judgements.jsonl"
-DEFAULT_DPO_PAIRS = LEGACY_DPO_DIR / "pairs.jsonl"
-DEFAULT_DPO_PAIRS_TRAIN = LEGACY_DPO_DIR / "pairs_train.jsonl"
-DEFAULT_DPO_PAIRS_VAL = LEGACY_DPO_DIR / "pairs_val.jsonl"
-DEFAULT_DPO_AUDIT = LEGACY_DPO_DIR / "audit_report.md"
+DEFAULT_DPO_PROMPTS = DPO_DIR / "prompts.jsonl"
+DEFAULT_DPO_CANDIDATES = DPO_DIR / "candidates.jsonl"
+DEFAULT_DPO_JUDGEMENTS = DPO_DIR / "judgements.jsonl"
+DEFAULT_DPO_PAIRS = DPO_DIR / "pairs.jsonl"
+DEFAULT_DPO_PAIRS_TRAIN = DPO_DIR / "pairs_train.jsonl"
+DEFAULT_DPO_PAIRS_VAL = DPO_DIR / "pairs_val.jsonl"
+DEFAULT_DPO_AUDIT = DPO_DIR / "audit_report.md"
 
 DPO_SCORE_KEYS = [
     "grounding",
@@ -79,7 +75,7 @@ def metadata_from_record(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def prompt_row_from_record(record: dict[str, Any], *, source: str, system_prompt: str) -> dict[str, Any]:
-    """把 legacy SFT record 转成 DPO prompt 样本。"""
+    """把当前 SFT record 转成 DPO prompt 样本。"""
     return {
         "prompt_id": record["record_id"],
         "record_id": record["record_id"],
@@ -238,8 +234,8 @@ def update_dataset_info(
     train_path: Path,
     val_path: Path,
     *,
-    train_dataset_name: str = "trip_legacy_dpo_train",
-    val_dataset_name: str = "trip_legacy_dpo_val",
+    train_dataset_name: str = "trip_dpo_train",
+    val_dataset_name: str = "trip_dpo_val",
 ) -> None:
     """注册 DPO 数据到 central LLaMA-Factory dataset_info。"""
     if DATASET_INFO_PATH.exists():
@@ -299,8 +295,8 @@ def write_lf_files(
     train_pairs: list[dict[str, Any]],
     val_pairs: list[dict[str, Any]],
     *,
-    train_dataset_name: str = "trip_legacy_dpo_train",
-    val_dataset_name: str = "trip_legacy_dpo_val",
+    train_dataset_name: str = "trip_dpo_train",
+    val_dataset_name: str = "trip_dpo_val",
 ) -> None:
     """写 LLaMA-Factory DPO JSON 数组并注册 dataset_info。"""
     write_json(train_path, [make_lf_dpo_row(pair) for pair in train_pairs])

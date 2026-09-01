@@ -185,9 +185,9 @@
     "trip_weather": 4.2
   },
   "first_errors": [],
-  "context_rebuild": {
-    "source_records": "training/data/planner/archive/eval_pre_high_end_context_20260511/eval_hard/records.jsonl",
-    "source_label": "260511_high_end_poi_context_rebuild",
+  "context": {
+    "records": "training/data/planner/eval_hard/records.jsonl",
+    "status": "current",
     "rebuilt_at": "2026-05-11T04:56:53.819539+00:00",
     "selected_records": 300,
     "pending_records": 300,

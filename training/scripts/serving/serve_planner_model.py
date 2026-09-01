@@ -66,7 +66,6 @@ DEFAULTS = {
 VARIANTS = {
     "base": None,
     "sft": PROJECT_ROOT / "training/outputs/qwen25_7b/sft",
-    "sft_legacy_clean": PROJECT_ROOT / "training/outputs/qwen25_7b/sft_legacy_clean",
     "dpo": PROJECT_ROOT / "training/outputs/qwen25_7b/dpo",
     "sft_dpo": PROJECT_ROOT / "training/outputs/qwen25_7b/sft_dpo",
 }

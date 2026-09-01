@@ -19,13 +19,11 @@ from openai import OpenAI
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
-LEGACY_SCRIPTS_DIR = PROJECT_ROOT / "training/scripts/eval"
-if not LEGACY_SCRIPTS_DIR.exists():
-    LEGACY_SCRIPTS_DIR = PROJECT_ROOT / "training/scripts/eval"
+EVAL_SCRIPTS_DIR = PROJECT_ROOT / "training/scripts/eval"
 SHARED_SCRIPTS_DIR = PROJECT_ROOT / "training/scripts"
 BACKEND_DIR = PROJECT_ROOT / "backend"
 sys.path.insert(0, str(BACKEND_DIR))
-sys.path.insert(0, str(LEGACY_SCRIPTS_DIR))
+sys.path.insert(0, str(EVAL_SCRIPTS_DIR))
 sys.path.insert(0, str(SHARED_SCRIPTS_DIR))
 
 from eval_rule_metrics import evaluate_output  # noqa: E402

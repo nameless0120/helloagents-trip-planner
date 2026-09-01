@@ -81,7 +81,7 @@ def test_weighted_report_and_explicit_comparison_labels(tmp: Path) -> None:
     for label, values in {
         "candidate": ((1, 2, 1, 1, 10.0), (3, 3, 3, 3, 20.0)),
         "baseline": ((0, 0, 0, 0, 30.0), (1, 1, 1, 1, 40.0)),
-        "legacy_b": ((1, 1, 1, 1, 50.0), (1, 1, 1, 1, 60.0)),
+        "reference_b": ((1, 1, 1, 1, 50.0), (1, 1, 1, 1, 60.0)),
     }.items():
         for split, records_path, total, values_for_split in [
             ("standard", standard_records, 2, values[0]),
@@ -105,7 +105,7 @@ def test_weighted_report_and_explicit_comparison_labels(tmp: Path) -> None:
         "--current-label",
         "candidate",
         "--primary-label",
-        "legacy_b",
+        "reference_b",
         "--baseline-label",
         "baseline",
         "--standard-records",
@@ -121,9 +121,9 @@ def test_weighted_report_and_explicit_comparison_labels(tmp: Path) -> None:
         "--report",
         f"hard/baseline={reports / 'baseline/hard/rule_eval_report.json'}",
         "--report",
-        f"standard/legacy_b={reports / 'legacy_b/standard/rule_eval_report.json'}",
+        f"standard/reference_b={reports / 'reference_b/standard/rule_eval_report.json'}",
         "--report",
-        f"hard/legacy_b={reports / 'legacy_b/hard/rule_eval_report.json'}",
+        f"hard/reference_b={reports / 'reference_b/hard/rule_eval_report.json'}",
         "--output-dir",
         str(output_dir),
         "--comparison-slug",
@@ -131,7 +131,7 @@ def test_weighted_report_and_explicit_comparison_labels(tmp: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     report = (output_dir / "smoke_full_report.md").read_text(encoding="utf-8")
-    assert "硬通过 80.0%，高于 legacy_b +40.0pp，高于 baseline +60.0pp" in report
+    assert "硬通过 80.0%，高于 reference_b +40.0pp，高于 baseline +60.0pp" in report
     assert "| 硬通过 | 80.0% (4/5) | 40.0% (2/5) | 20.0% (1/5) |" in report
     assert "| 重算总预算 avg | 16.0 | 56.0 | 36.0 |" in report
 

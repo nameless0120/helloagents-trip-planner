@@ -15,13 +15,13 @@
   python training/scripts/run_pipeline.py \
     --stage sft --count 20 --request-source controlled \
     --date-mode mixed --workers 1 \
-    --output-dir training/data/planner/sft_runs/260831_smoke
+    --output-dir training/data/planner/sft_runs/reader_smoke
 
   # 从 SFT records 接着生成通用 DPO 数据
   python training/scripts/run_pipeline.py \
     --stage dpo \
-    --records training/data/planner/sft_runs/260831_smoke/records.jsonl \
-    --output-dir training/data/planner/dpo/260831_smoke
+    --records training/data/planner/sft_runs/reader_smoke/records.jsonl \
+    --output-dir training/data/planner/dpo/reader_smoke
 
 这里的 ``sft``、``pricing``、``bestofn`` 和 ``dpo`` 是数据处理流水线；评测和
 训练需要另外提供模型服务或训练配置，因此也作为显式阶段提供，不会被默认启动。
@@ -894,7 +894,6 @@ def run_validate(args: argparse.Namespace, python: str, stages: Sequence[str]) -
         targets.append(("eval-gt", project_path(args.validate_eval_gt), "校验 Eval GT"))
 
     if not targets and "sft" in stages:
-        sft_dir = stage_output_dir(args, "sft", stages)
         prefix = sft_dataset_prefix(args, stages)
         lf_dir = LLAMAFACTORY_DATA_DIR / "generated"
         targets.extend(
@@ -904,7 +903,6 @@ def run_validate(args: argparse.Namespace, python: str, stages: Sequence[str]) -
             ]
         )
     if not targets and "dpo" in stages:
-        dpo_dir = stage_output_dir(args, "dpo", stages)
         prefix = dpo_dataset_prefix(args, stages)
         lf_dir = LLAMAFACTORY_DATA_DIR / "generated"
         targets.extend(
@@ -1171,10 +1169,10 @@ def build_training_overrides(
 ) -> tuple[list[str], tuple[str, str, str] | None, Path | None]:
     """生成传给 LLaMA-Factory 的动态覆盖参数。"""
     generated_plan = generated_training_datasets(args, stages)
-    has_legacy_dataset = config_has_key(config, "dataset")
+    has_dataset_config = config_has_key(config, "dataset")
     has_v1_dataset = config_has_key(config, "train_dataset")
 
-    if generated_plan and not has_legacy_dataset:
+    if generated_plan and not has_dataset_config:
         if has_v1_dataset:
             raise PipelineError(
                 "当前自动接线只支持经典 LLaMA-Factory 配置的 dataset/eval_dataset；"
@@ -1200,7 +1198,7 @@ def build_training_overrides(
                 f"训练配置 stage={config_stage} 与本轮自动接入的数据类型 {data_kind} 不一致；"
                 f"请更换配置，当前数据集为 {train_name}。"
             )
-    elif has_legacy_dataset:
+    elif has_dataset_config:
         train_name = config_scalar(config, "dataset")
         eval_name = config_scalar(config, "eval_dataset")
         if not train_name:
@@ -1210,7 +1208,7 @@ def build_training_overrides(
         eval_name = None
 
     overrides: list[str] = []
-    if has_legacy_dataset and train_name:
+    if has_dataset_config and train_name:
         if args.train_dataset_dir:
             dataset_dir = project_path(args.train_dataset_dir).resolve()
         elif generated_plan:
@@ -1537,7 +1535,7 @@ def build_parser() -> argparse.ArgumentParser:
     dpo.add_argument("--dpo-base-url", default="http://127.0.0.1:4397/v1")
     dpo.add_argument("--dpo-base-api-model", default="trip-planner-base")
     dpo.add_argument("--dpo-sft-base-url", default="http://127.0.0.1:4396/v1")
-    dpo.add_argument("--dpo-sft-api-model", default="trip-planner-sft-legacy-clean")
+    dpo.add_argument("--dpo-sft-api-model", default="trip-planner-sft")
     dpo.add_argument("--dpo-no-base-low", action="store_true")
     dpo.add_argument("--dpo-no-base-high", action="store_true")
     dpo.add_argument("--dpo-no-sft-low", action="store_true")

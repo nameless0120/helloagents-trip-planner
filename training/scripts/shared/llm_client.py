@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import os
 import json
+import sys
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from openai import OpenAI
+SCRIPTS_DIR = Path(__file__).resolve().parents[1]
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
-from shared.common import extract_json, load_project_env
+from openai import OpenAI  # noqa: E402
+
+from shared.common import extract_json, load_project_env  # noqa: E402
 
 
 _usage_log_lock = threading.Lock()

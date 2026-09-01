@@ -25,7 +25,7 @@ DATA_SCRIPT_DIR = SCRIPTS_DIR / "planner" / "data"
 if str(DATA_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(DATA_SCRIPT_DIR))
 
-import generate_sft_data as gen
+import generate_sft_data as gen  # noqa: E402
 
 
 DEFAULT_OUTPUT_DIR = (
@@ -196,11 +196,8 @@ def audit_context(request: dict[str, Any], planner_context: dict[str, Any]) -> d
     ]
 
     hotel_prices = numeric_values(hotels, "estimated_cost_hint")
-    meal_prices = numeric_values(foods, "meal_cost_hint")
     lunch_dinner_prices = numeric_values(food_lunch_dinner, "meal_cost_hint")
     breakfast_prices = numeric_values(breakfast_candidates, "meal_cost_hint")
-    scenic_prices = numeric_values(scenic, "ticket_price_hint")
-    experience_prices = numeric_values(experience, "ticket_price_hint")
     attraction_prices = numeric_values(attraction_candidates, "ticket_price_hint")
 
     hotel_high = max(hotel_prices or [0]) * lodging_nights * rooms

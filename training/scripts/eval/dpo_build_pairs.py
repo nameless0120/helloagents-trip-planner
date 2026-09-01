@@ -23,7 +23,6 @@ from dpo_utils import (
     DEFAULT_DPO_PAIRS_VAL,
     DEFAULT_DPO_PROMPTS,
     LLAMAFACTORY_DIR,
-    LEGACY_DPO_DIR,
     hard_filter_pass,
     read_jsonl,
     safe_counter,
@@ -31,9 +30,9 @@ from dpo_utils import (
     split_pairs,
     tag_from_score_gap,
     write_json,
-    write_jsonl,
     write_lf_files,
 )
+from eval_utils import write_jsonl
 
 
 def flatten_candidates(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -183,21 +182,21 @@ def write_summary(path: Path, pairs: list[dict[str, Any]], train_pairs: list[dic
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="构造 legacy DPO chosen/rejected pair。")
+    parser = argparse.ArgumentParser(description="构造 DPO chosen/rejected pair。")
     parser.add_argument("--prompts", type=Path, default=DEFAULT_DPO_PROMPTS)
     parser.add_argument("--candidates", type=Path, default=DEFAULT_DPO_CANDIDATES)
     parser.add_argument("--judgements", type=Path, default=DEFAULT_DPO_JUDGEMENTS)
     parser.add_argument("--output", type=Path, default=DEFAULT_DPO_PAIRS)
     parser.add_argument("--train-output", type=Path, default=DEFAULT_DPO_PAIRS_TRAIN)
     parser.add_argument("--val-output", type=Path, default=DEFAULT_DPO_PAIRS_VAL)
-    parser.add_argument("--lf-output-dir", type=Path, default=LLAMAFACTORY_DIR)
-    parser.add_argument("--lf-copy-dir", type=Path, default=LEGACY_DPO_DIR / "llamafactory")
-    parser.add_argument("--lf-train-file", default="trip_legacy_dpo_train.json")
-    parser.add_argument("--lf-val-file", default="trip_legacy_dpo_val.json")
-    parser.add_argument("--dataset-train-name", default="trip_legacy_dpo_train")
-    parser.add_argument("--dataset-val-name", default="trip_legacy_dpo_val")
+    parser.add_argument("--lf-output-dir", type=Path, default=LLAMAFACTORY_DIR / "generated")
+    parser.add_argument("--lf-copy-dir", type=Path, default=None, help="可选：在本轮输出目录保存一份 LLaMA-Factory 副本。")
+    parser.add_argument("--lf-train-file", default="trip_dpo_train.json")
+    parser.add_argument("--lf-val-file", default="trip_dpo_val.json")
+    parser.add_argument("--dataset-train-name", default="trip_dpo_train")
+    parser.add_argument("--dataset-val-name", default="trip_dpo_val")
     parser.add_argument("--val-ratio", type=float, default=0.1)
-    parser.add_argument("--seed", type=int, default=20260502)
+    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--min-chosen-score", type=float, default=4.0)
     parser.add_argument("--min-score-gap", type=float, default=0.8)
     parser.add_argument("--tag-gap", type=float, default=0.8)
@@ -222,7 +221,7 @@ def main() -> None:
         pairs.extend(rows)
 
     for index, pair in enumerate(pairs, start=1):
-        pair["pair_id"] = f"dpo_legacy_{index:06d}"
+        pair["pair_id"] = f"dpo_{index:06d}"
 
     train_pairs, val_pairs = split_pairs(pairs, args.val_ratio, args.seed)
     write_jsonl(args.output, pairs)
@@ -240,8 +239,8 @@ def main() -> None:
         val_dataset_name=args.dataset_val_name,
     )
     if args.lf_copy_dir:
-        write_json(args.lf_copy_dir / "trip_legacy_dpo_train.json", [json.loads(json.dumps(item, ensure_ascii=False)) for item in json.loads(lf_train.read_text(encoding="utf-8"))])
-        write_json(args.lf_copy_dir / "trip_legacy_dpo_val.json", [json.loads(json.dumps(item, ensure_ascii=False)) for item in json.loads(lf_val.read_text(encoding="utf-8"))])
+        write_json(args.lf_copy_dir / args.lf_train_file, json.loads(lf_train.read_text(encoding="utf-8")))
+        write_json(args.lf_copy_dir / args.lf_val_file, json.loads(lf_val.read_text(encoding="utf-8")))
 
     summary_path = args.output.parent / "pair_build_summary.md"
     write_summary(summary_path, pairs, train_pairs, val_pairs)

@@ -13,17 +13,15 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 BACKEND_DIR = PROJECT_ROOT / "backend"
-LEGACY_SCRIPTS_DIR = PROJECT_ROOT / "training/scripts/eval"
-if not LEGACY_SCRIPTS_DIR.exists():
-    LEGACY_SCRIPTS_DIR = PROJECT_ROOT / "training/scripts/eval"
+EVAL_SCRIPTS_DIR = PROJECT_ROOT / "training/scripts/eval"
 sys.path.insert(0, str(BACKEND_DIR))
-sys.path.insert(0, str(LEGACY_SCRIPTS_DIR))
+sys.path.insert(0, str(EVAL_SCRIPTS_DIR))
 
 from app.agents.prompts import PLANNER_AGENT_PROMPT  # noqa: E402
 from eval_utils import read_jsonl, weather_bucket, write_json, write_jsonl  # noqa: E402
 
 
-DEFAULT_RECORDS = PROJECT_ROOT / "training/data/planner/dpo/prompt_source/records.jsonl"
+DEFAULT_RECORDS = PROJECT_ROOT / "training/data/planner/eval/records.jsonl"
 DEFAULT_OUTPUT = PROJECT_ROOT / "training/data/planner/bestofn/prompts.jsonl"
 
 
@@ -181,7 +179,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--summary-output", type=Path, default=None)
     parser.add_argument("--source", default=None)
     parser.add_argument("--limit", type=int, default=0)
-    parser.add_argument("--seed", type=int, default=20260511)
+    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--shuffle", action="store_true")
     parser.add_argument(
         "--stratified-smoke20",
@@ -191,7 +189,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--include-luxury",
         action="store_true",
-        help="Allow legacy luxury rows when using --stratified-smoke20.",
+        help="Include luxury rows when using --stratified-smoke20.",
     )
     parser.add_argument(
         "--system-prompt-file",
@@ -221,11 +219,11 @@ def main() -> None:
     source = args.source or args.records.stem
     rows = [prompt_row_from_record(record, source, system_prompt) for record in records]
     if args.resume and args.output.exists():
-        old_rows = read_jsonl(args.output)
-        done_ids = {row.get("prompt_id") for row in old_rows if row.get("prompt_id")}
+        existing_rows = read_jsonl(args.output)
+        done_ids = {row.get("prompt_id") for row in existing_rows if row.get("prompt_id")}
         new_rows = [row for row in rows if row.get("prompt_id") not in done_ids]
-        rows = old_rows + new_rows
-        print(f"resume: existing={len(old_rows)}, add={len(new_rows)}")
+        rows = existing_rows + new_rows
+        print(f"resume: existing={len(existing_rows)}, add={len(new_rows)}")
     write_jsonl(args.output, rows)
 
     summary_path = args.summary_output or (args.output.parent / "prompts_summary.json")
