@@ -5,15 +5,11 @@
 ## 当前主线
 
 ```text
-请求分布
-  -> PlannerContext
-  -> SFT records
-  -> 预算审计
-  -> 可用性分类
-  -> LLaMA-Factory train/val
-  -> TripPlan 校验
+SFT 数据生成
+  -> SFT 数据审计/导出
   -> SFT 训练
-  -> DPO / Best-of-N / 评测（按需）
+  -> DPO 数据构造和训练
+  -> 模型评测出结果
 ```
 
 底层 SFT 入口只有：
@@ -50,49 +46,59 @@ DATA_GEN_THINKING=false
   --strict-preflight
 ```
 
-## 一条命令生成并训练 SFT
+## 读者复现流程
 
 ```bash
-RUN_DIR="training/data/planner/sft_runs/$(date +%Y%m%d_%H%M%S)_reader_train"
+export RUN_NAME="$(date +%Y%m%d_%H%M%S)_reader"
+export SFT_RUN="training/data/planner/sft_runs/${RUN_NAME}"
+export SFT_DATASET="trip_planner_sft_${RUN_NAME}"
+export DPO_RUN="training/data/planner/dpo/${RUN_NAME}"
+export DPO_DATASET="trip_planner_dpo_${RUN_NAME}"
+```
+
+### 1. 数据生成
+
+```bash
 .venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
-  --stage sft \
-  --stage train \
+  --stage sft-data \
   --count 20 \
   --request-source controlled \
   --date-mode mixed \
   --workers 1 \
-  --sft-dir "$RUN_DIR" \
+  --sft-dir "$SFT_RUN"
+```
+
+这一步会生成 `$SFT_RUN/records.jsonl`。
+
+### 2. 数据审计
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage sft-audit \
+  --records "$SFT_RUN/records.jsonl" \
+  --sft-dir "$SFT_RUN" \
+  --sft-dataset-prefix "$SFT_DATASET"
+```
+
+这一步会生成预算审计、样本分类、干净子集和 LLaMA-Factory train/val 文件。导出的数据集名是 `${SFT_DATASET}_train` 和 `${SFT_DATASET}_val`。
+
+### 3. SFT 微调
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage train \
   --config training/configs/qwen25_7b/sft_qwen25_7b_lora.yaml \
+  --train-dataset "${SFT_DATASET}_train" \
+  --train-eval-dataset "${SFT_DATASET}_val" \
   --llamafactory-root ../LLaMA-Factory \
   --train-output-dir training/outputs/qwen25_7b/sft
 ```
 
-正式运行会调用高德、数据生成模型和 GPU。只检查命令时追加 `--dry-run`，不会调用 API 或启动训练。
+这一步只训练，不会重新生成数据。
 
-只生成和审计数据时，去掉 `--stage train` 与训练参数：
+### 4. DPO 微调
 
-```bash
-.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
-  --stage sft \
-  --count 20 \
-  --request-source controlled \
-  --date-mode mixed \
-  --workers 1 \
-  --output-dir training/data/planner/sft_runs/<run>
-```
-
-生成结果写入 run 目录，导出的 LLaMA-Factory 文件写入 `data/llamafactory/generated/`，并登记在 `dataset_info.json`。
-
-## 一条命令启动模型服务
-
-DPO 数据生成默认需要两个本地模型服务：
-
-```text
-base model -> http://127.0.0.1:4397/v1 -> trip-planner-base
-SFT model  -> http://127.0.0.1:4396/v1 -> trip-planner-sft
-```
-
-启动这两个服务：
+DPO 数据构造要先启动 base 和 SFT 服务：
 
 ```bash
 .venv-training-py311/bin/python3 training/scripts/serving/manage_planner_service.py \
@@ -103,7 +109,62 @@ SFT model  -> http://127.0.0.1:4396/v1 -> trip-planner-sft
   --sft-adapter-path training/outputs/qwen25_7b/sft
 ```
 
-DPO 训练完成后，如果要同时评测 SFT 和 DPO，可以把 DPO 服务也起起来：
+然后用一条命令生成 DPO 数据并训练：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage dpo \
+  --stage train \
+  --records "$SFT_RUN/export_budget_clean/records.jsonl" \
+  --dpo-dir "$DPO_RUN" \
+  --dpo-dataset-prefix "$DPO_DATASET" \
+  --dpo-workers 1 \
+  --judge-workers 1 \
+  --config training/configs/qwen25_7b/dpo_qwen25_7b_lora.yaml \
+  --llamafactory-root ../LLaMA-Factory \
+  --train-output-dir training/outputs/qwen25_7b/dpo
+```
+
+这一步会构造 prompt、生成多来源候选、judge、导出 pair、审计 DPO 数据，再进入 LLaMA-Factory DPO。
+
+### 5. 评测出结果
+
+DPO 训练完成后，启动 DPO 服务：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/serving/manage_planner_service.py \
+  start-all \
+  --services dpo \
+  --dpo-devices 7 \
+  --dpo-adapter-path training/outputs/qwen25_7b/dpo
+```
+
+然后跑冻结评测集：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage eval \
+  --records training/data/planner/eval/records.jsonl \
+  --model-name trip_planner_dpo \
+  --api-model trip-planner-dpo \
+  --base-url http://127.0.0.1:4398/v1 \
+  --eval-dir training/outputs/eval/dpo \
+  --workers 1
+```
+
+评测结果写入 `training/outputs/eval/dpo/trip_planner_dpo/`。
+
+## 模型服务
+
+默认端口和模型名：
+
+```text
+base -> http://127.0.0.1:4397/v1 -> trip-planner-base
+sft  -> http://127.0.0.1:4396/v1 -> trip-planner-sft
+dpo  -> http://127.0.0.1:4398/v1 -> trip-planner-dpo
+```
+
+启动 base、SFT 和 DPO：
 
 ```bash
 .venv-training-py311/bin/python3 training/scripts/serving/manage_planner_service.py \
@@ -116,7 +177,7 @@ DPO 训练完成后，如果要同时评测 SFT 和 DPO，可以把 DPO 服务�
   --dpo-adapter-path training/outputs/qwen25_7b/dpo
 ```
 
-查看和停止服务：
+查看和停止：
 
 ```bash
 .venv-training-py311/bin/python3 training/scripts/serving/manage_planner_service.py status-all
@@ -126,12 +187,16 @@ DPO 训练完成后，如果要同时评测 SFT 和 DPO，可以把 DPO 服务�
 `start-all` 只负责起模型服务，不会生成数据或训练。训练输出目录不是默认路径时，用
 `--sft-adapter-path` 或 `--dpo-adapter-path` 指到实际 LoRA 目录。
 
+正式运行会调用高德、数据生成模型、模型服务和 GPU。只检查命令时追加 `--dry-run`，不会调用 API 或启动训练。
+
 ## 其他阶段
 
 | 阶段 | 作用 | 主要依赖 |
 | --- | --- | --- |
 | `sft-request` | 检查受控请求分布 | 无外部服务 |
 | `sft-context` | 构建 PlannerContext smoke | 高德 API |
+| `sft-data` | 生成 SFT records | 高德 API、数据生成模型 |
+| `sft-audit` | 审计、分类、导出和校验 SFT 数据 | 本地 records |
 | `pricing` | 收集和估算景点票价候选 | records、高德，估价时需要强模型 |
 | `eval-data` | 构建冻结评测输入 | 高德 API |
 | `bestofn` | 多候选采样、规则选择、导出数据 | Planner 模型服务 |

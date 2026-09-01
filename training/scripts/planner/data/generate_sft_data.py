@@ -1,7 +1,7 @@
 """生成 SFT 数据。
 
-对外推荐从 `training/scripts/run_pipeline.py --stage sft` 进入。这个脚本是总入口
-调用的 SFT 生成阶段，单独运行主要用于调试请求、上下文和生成本身。
+对外推荐从 `training/scripts/run_pipeline.py --stage sft-data` 进入。这个脚本是总入口
+调用的 SFT records 生成阶段，单独运行主要用于调试请求、上下文和生成本身。
 
 示例:
 

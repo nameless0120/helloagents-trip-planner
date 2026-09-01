@@ -12,16 +12,26 @@ planner/data/generate_sft_data.py
   -> validation/validate_trip_plan.py
 ```
 
-直接运行 SFT 总流程：
+生成 SFT records：
 
 ```bash
 .venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
-  --stage sft \
+  --stage sft-data \
   --count 20 \
   --request-source controlled \
   --date-mode mixed \
   --workers 1 \
-  --output-dir training/data/planner/sft_runs/<run>
+  --sft-dir training/data/planner/sft_runs/<run>
+```
+
+审计、分类、导出和校验：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage sft-audit \
+  --records training/data/planner/sft_runs/<run>/records.jsonl \
+  --sft-dir training/data/planner/sft_runs/<run> \
+  --sft-dataset-prefix trip_planner_sft_<run>
 ```
 
 `generate_sft_data.py` 可用 `--dry-run-requests` 检查请求分布，也可用 `--dry-run-context` 检查 PlannerContext；这两个模式不生成模型答案。

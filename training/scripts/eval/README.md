@@ -4,12 +4,22 @@
 
 ```bash
 .venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
-  --stage sft \
+  --stage sft-data \
   --count 20 \
   --request-source controlled \
   --date-mode mixed \
   --workers 1 \
   --sft-dir training/data/planner/sft_runs/<YYMMDD>_<run_slug>
+```
+
+然后审计并导出：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage sft-audit \
+  --records training/data/planner/sft_runs/<YYMMDD>_<run_slug>/records.jsonl \
+  --sft-dir training/data/planner/sft_runs/<YYMMDD>_<run_slug> \
+  --sft-dataset-prefix trip_planner_sft_<run_slug>
 ```
 
 当前后训练主线是：
@@ -27,7 +37,7 @@ run_pipeline.py
 需要做偏好优化或多候选评测时，使用：
 
 ```text
-当前 SFT records
+审计后的 SFT records
   -> planner/bestofn/ 或 eval/dpo_build_prompts.py
   -> 候选生成和规则评测
   -> chosen / rejected
@@ -55,12 +65,12 @@ run_pipeline.py
 
 ## 推荐入口
 
-从当前 SFT records 继续生成 DPO 数据：
+从审计后的 SFT records 继续生成 DPO 数据：
 
 ```bash
 .venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
   --stage dpo \
-  --records training/data/planner/sft_runs/<YYMMDD>_<run_slug>/records.jsonl \
+  --records training/data/planner/sft_runs/<YYMMDD>_<run_slug>/export_budget_clean/records.jsonl \
   --dpo-dir training/data/planner/dpo/<YYMMDD>_<run_slug> \
   --dpo-workers 1
 ```
@@ -70,7 +80,7 @@ run_pipeline.py
 ```bash
 .venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
   --stage eval \
-  --eval-data-dir training/data/planner/eval \
+  --records training/data/planner/eval/records.jsonl \
   --model-name <model_name> \
   --api-model <api_model> \
   --eval-dir training/outputs/eval/<model_name> \

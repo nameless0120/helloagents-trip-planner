@@ -154,13 +154,11 @@ npm run dev -- --host 0.0.0.0 --port 5173
 如果你要复现 SFT 或继续做 DPO，不需要先启动 backend 和 frontend。后训练从下面这个总入口开始：
 
 ```text
-请求分布
-  -> PlannerContext
-  -> 强模型生成 TripPlan JSON
-  -> 预算审计
-  -> 可用性分类
-  -> 导出 LLaMA-Factory 数据
-  -> （可选）LoRA 训练
+SFT 数据生成
+  -> SFT 数据审计/导出
+  -> SFT 训练
+  -> DPO 数据构造和训练
+  -> 模型评测出结果
 ```
 
 当前后训练统一从 `training/scripts/run_pipeline.py` 开始。SFT 数据生成的底层脚本是 `training/scripts/planner/data/generate_sft_data.py`。
@@ -210,57 +208,61 @@ cd ../helloagents-trip-planner
 
 只想看完整命令、不生成数据和不训练时，在正式命令末尾加 `--dry-run`。
 
-### 3. 先跑 SFT 数据流程
+### 3. 设置本轮路径
 
-这条命令会调用高德和数据生成模型，完成生成、预算审计、可用性分类、干净子集导出和格式校验：
+下面的 5 条主命令会复用这几个变量，变量名只为少写重复路径：
 
 ```bash
-RUN_DIR="training/data/planner/sft_runs/$(date +%Y%m%d_%H%M%S)_reader_smoke"
+export RUN_NAME="$(date +%Y%m%d_%H%M%S)_reader"
+export SFT_RUN="training/data/planner/sft_runs/${RUN_NAME}"
+export SFT_DATASET="trip_planner_sft_${RUN_NAME}"
+export DPO_RUN="training/data/planner/dpo/${RUN_NAME}"
+export DPO_DATASET="trip_planner_dpo_${RUN_NAME}"
+```
+
+### 4. 数据生成，一个命令
+
+```bash
 .venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
-  --stage sft \
+  --stage sft-data \
   --count 20 \
   --request-source controlled \
   --date-mode mixed \
   --workers 1 \
-  --sft-dir "$RUN_DIR"
+  --sft-dir "$SFT_RUN"
 ```
 
-生成前可以先只看请求分布，不调用任何外部服务：
+这一步会调用高德和数据生成模型，输出 `$SFT_RUN/records.jsonl`。如果只是看请求分布，用 `--stage sft-request`，不会调用外部服务。
+
+### 5. 数据审计，一个命令
 
 ```bash
 .venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
-  --stage sft-request \
-  --count 20 \
-  --request-source controlled \
-  --date-mode mixed
+  --stage sft-audit \
+  --records "$SFT_RUN/records.jsonl" \
+  --sft-dir "$SFT_RUN" \
+  --sft-dataset-prefix "$SFT_DATASET"
 ```
 
-本轮结果会写到 `training/data/planner/sft_runs/<run>/`。重点看 `records.jsonl`、`errors.jsonl`、`audit_budget/`、`classification/` 和 `export_budget_clean/`。只有通过审计和分类的样本才会导出到 `training/data/llamafactory/generated/`。
+这一步会完成预算审计、可用性分类、干净子集导出和格式校验。通过审计的数据会写入 `training/data/llamafactory/generated/`，并登记到 `training/data/llamafactory/dataset_info.json`。
 
-### 4. 从本轮数据直接训练
-
-确认 SFT 数据流程没问题后，在同一次命令中追加 `--stage train`、训练配置和 LLaMA-Factory 路径：
+### 6. SFT 微调，一个命令
 
 ```bash
-RUN_DIR="training/data/planner/sft_runs/$(date +%Y%m%d_%H%M%S)_reader_train"
 .venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
-  --stage sft \
   --stage train \
-  --count 20 \
-  --request-source controlled \
-  --date-mode mixed \
-  --workers 1 \
-  --sft-dir "$RUN_DIR" \
   --config training/configs/qwen25_7b/sft_qwen25_7b_lora.yaml \
+  --train-dataset "${SFT_DATASET}_train" \
+  --train-eval-dataset "${SFT_DATASET}_val" \
   --llamafactory-root ../LLaMA-Factory \
   --train-output-dir training/outputs/qwen25_7b/sft
 ```
 
-这条命令会自动把本轮导出的 `dataset`、`eval_dataset`、`dataset_dir` 和训练输出目录接给 LLaMA-Factory，不需要手动改 YAML 或复制 JSON。训练阶段需要本地模型缓存、CUDA GPU 和已经应用项目补丁的 LLaMA-Factory；只生成数据时不要加 `--stage train`。
+训练阶段需要本地模型缓存、CUDA GPU 和已经应用项目补丁的 LLaMA-Factory。这里不会重新生成数据，只读取上一步登记好的数据集。
 
-### 5. 启动本地模型服务
+### 7. DPO 微调，一个命令
 
-DPO 数据生成和模型评测需要 OpenAI-compatible 的本地模型服务。统一用一个脚本管理：
+DPO 需要先启动 base 和 SFT 模型服务：
 
 ```bash
 .venv-training-py311/bin/python3 training/scripts/serving/manage_planner_service.py \
@@ -271,6 +273,47 @@ DPO 数据生成和模型评测需要 OpenAI-compatible 的本地模型服务。
   --sft-adapter-path training/outputs/qwen25_7b/sft
 ```
 
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage dpo \
+  --stage train \
+  --records "$SFT_RUN/export_budget_clean/records.jsonl" \
+  --dpo-dir "$DPO_RUN" \
+  --dpo-dataset-prefix "$DPO_DATASET" \
+  --dpo-workers 1 \
+  --judge-workers 1 \
+  --config training/configs/qwen25_7b/dpo_qwen25_7b_lora.yaml \
+  --llamafactory-root ../LLaMA-Factory \
+  --train-output-dir training/outputs/qwen25_7b/dpo
+```
+
+DPO 这一条命令会生成 prompt、调用 base/SFT 生成候选、用强模型 judge、构造 chosen/rejected pair、做 DPO 数据审计，然后启动 DPO 训练。
+
+### 8. 评测出结果，一个命令
+
+DPO 训练完成后，启动 DPO 服务：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/serving/manage_planner_service.py \
+  start-all \
+  --services dpo \
+  --dpo-devices 7 \
+  --dpo-adapter-path training/outputs/qwen25_7b/dpo
+```
+
+然后跑冻结评测集：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage eval \
+  --records training/data/planner/eval/records.jsonl \
+  --model-name trip_planner_dpo \
+  --api-model trip-planner-dpo \
+  --base-url http://127.0.0.1:4398/v1 \
+  --eval-dir training/outputs/eval/dpo \
+  --workers 1
+```
+
 默认端口和模型名：
 
 ```text
@@ -279,27 +322,14 @@ sft  -> http://127.0.0.1:4396/v1 -> trip-planner-sft
 dpo  -> http://127.0.0.1:4398/v1 -> trip-planner-dpo
 ```
 
-DPO 训练后要评测 DPO 模型时，再加 `dpo`：
-
-```bash
-.venv-training-py311/bin/python3 training/scripts/serving/manage_planner_service.py \
-  start-all \
-  --services base,sft,dpo \
-  --base-devices 4,5 \
-  --sft-devices 6 \
-  --dpo-devices 7 \
-  --sft-adapter-path training/outputs/qwen25_7b/sft \
-  --dpo-adapter-path training/outputs/qwen25_7b/dpo
-```
-
-查看和停止：
+查看和停止模型服务：
 
 ```bash
 .venv-training-py311/bin/python3 training/scripts/serving/manage_planner_service.py status-all
 .venv-training-py311/bin/python3 training/scripts/serving/manage_planner_service.py stop-all --kill
 ```
 
-详细的阶段参数、DPO、评测和补丁说明见 [training/README.md](training/README.md) 和 [LLaMA-Factory 本地改动说明](training/docs/内部文档/DPO分块LogProb方案说明.md)。
+详细参数见 [training/README.md](training/README.md) 和 [LLaMA-Factory 本地改动说明](training/docs/内部文档/DPO分块LogProb方案说明.md)。
 
 ## API 概览
 

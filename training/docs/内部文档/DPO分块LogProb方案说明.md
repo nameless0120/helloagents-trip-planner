@@ -94,37 +94,47 @@ git -C ../LLaMA-Factory apply --reverse --check \
 
 ## 从统一入口启动训练
 
-训练阶段必须显式指定配置。LLaMA-Factory 根目录默认取 `LLAMAFACTORY_ROOT`，未设置时取主项目同级的 `../LLaMA-Factory`。如果从本轮数据开始训练，推荐把数据生成和训练放在同一次调用中：
+训练阶段必须显式指定配置。LLaMA-Factory 根目录默认取 `LLAMAFACTORY_ROOT`，未设置时取主项目同级的 `../LLaMA-Factory`。推荐先用 `sft-data` 和 `sft-audit` 生成并登记数据集，再单独启动训练：
 
 ```bash
 cd helloagents-trip-planner
+export RUN_NAME="$(date +%Y%m%d_%H%M%S)_reader"
+export SFT_RUN="training/data/planner/sft_runs/${RUN_NAME}"
+export SFT_DATASET="trip_planner_sft_${RUN_NAME}"
+
 .venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
-  --stage sft \
-  --stage train \
+  --stage sft-data \
   --count 20 \
   --request-source controlled \
   --date-mode mixed \
   --workers 1 \
-  --sft-dir training/data/planner/sft_runs/reader_smoke \
+  --sft-dir "$SFT_RUN"
+
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage sft-audit \
+  --records "$SFT_RUN/records.jsonl" \
+  --sft-dir "$SFT_RUN" \
+  --sft-dataset-prefix "$SFT_DATASET"
+
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage train \
   --config training/configs/qwen25_7b/sft_qwen25_7b_lora.yaml \
+  --train-dataset "${SFT_DATASET}_train" \
+  --train-eval-dataset "${SFT_DATASET}_val" \
   --llamafactory-root ../LLaMA-Factory \
   --llamafactory-cli .venv-training-py311/bin/llamafactory-cli
 ```
 
-入口会根据本轮 `--sft-dir` 生成的数据集名自动覆盖 `dataset`、`eval_dataset` 和 `dataset_dir`，同时为本轮训练生成独立的 `output_dir`。训练前会检查数据集是否已经登记且文件非空。要在同一轮生成 DPO，需要保留 `--stage sft`，再追加 `--stage dpo`、`--dpo-dir`，并改用 `dpo_qwen25_7b_lora.yaml`；DPO 数据生成阶段仍需要按 `training/README.md` 启动对应的模型服务和 judge 配置。已有 DPO 文件则可以只执行 `--stage train`，前提是配置中的数据集已经登记。
+入口会把 `--train-dataset`、`--train-eval-dataset`、`dataset_dir` 和训练输出目录传给 LLaMA-Factory。训练前会检查数据集是否已经登记且文件非空。DPO 数据构造和训练使用 `--stage dpo --stage train`，并改用 `dpo_qwen25_7b_lora.yaml`；DPO 数据生成阶段仍需要按 `training/README.md` 启动对应的模型服务和 judge 配置。已有 DPO 文件则可以只执行 `--stage train`，前提是配置中的数据集已经登记。
 
 第一次建议先查看命令，不执行数据生成或训练：
 
 ```bash
 .venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
-  --stage sft \
   --stage train \
-  --count 20 \
-  --request-source controlled \
-  --date-mode mixed \
-  --workers 1 \
-  --sft-dir training/data/planner/sft_runs/reader_smoke \
   --config training/configs/qwen25_7b/sft_qwen25_7b_lora.yaml \
+  --train-dataset "${SFT_DATASET}_train" \
+  --train-eval-dataset "${SFT_DATASET}_val" \
   --llamafactory-root ../LLaMA-Factory \
   --dry-run
 ```

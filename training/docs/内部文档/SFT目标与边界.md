@@ -38,4 +38,4 @@ Planner SFT 的目标是让模型把结构化 `PlannerContext` 稳定转换成�
   -> SFT JSON 校验
 ```
 
-所有步骤由 `training/scripts/run_pipeline.py --stage sft` 统一调度。
+数据生成由 `training/scripts/run_pipeline.py --stage sft-data` 调度，审计、导出和校验由 `training/scripts/run_pipeline.py --stage sft-audit` 调度。

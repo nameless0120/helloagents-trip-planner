@@ -11,20 +11,28 @@
     --stage sft-request --count 20 --request-source controlled \
     --date-mode mixed
 
-  # 生成 SFT，并自动完成预算审计、分类和 LLaMA-Factory 导出
+  # 只生成 SFT records
   python training/scripts/run_pipeline.py \
-    --stage sft --count 20 --request-source controlled \
+    --stage sft-data --count 20 --request-source controlled \
     --date-mode mixed --workers 1 \
-    --output-dir training/data/planner/sft_runs/reader_smoke
+    --sft-dir training/data/planner/sft_runs/reader_smoke
 
-  # 从 SFT records 接着生成通用 DPO 数据
+  # 审计并导出上一条命令生成的 SFT 数据
+  python training/scripts/run_pipeline.py \
+    --stage sft-audit \
+    --records training/data/planner/sft_runs/reader_smoke/records.jsonl \
+    --sft-dir training/data/planner/sft_runs/reader_smoke \
+    --sft-dataset-prefix trip_planner_sft_reader_smoke
+
+  # 从审计后的 SFT records 接着生成通用 DPO 数据
   python training/scripts/run_pipeline.py \
     --stage dpo \
-    --records training/data/planner/sft_runs/reader_smoke/records.jsonl \
+    --records training/data/planner/sft_runs/reader_smoke/export_budget_clean/records.jsonl \
     --output-dir training/data/planner/dpo/reader_smoke
 
-这里的 ``sft``、``pricing``、``bestofn`` 和 ``dpo`` 是数据处理流水线；评测和
-训练需要另外提供模型服务或训练配置，因此也作为显式阶段提供，不会被默认启动。
+这里的 ``sft-data``、``sft-audit``、``pricing``、``bestofn`` 和 ``dpo`` 是数据处理
+流水线；评测和训练需要另外提供模型服务或训练配置，因此也作为显式阶段提供，
+不会被默认启动。
 """
 
 from __future__ import annotations
@@ -78,7 +86,8 @@ STAGE_ORDER = [
     "preflight",
     "sft-request",
     "sft-context",
-    "sft",
+    "sft-data",
+    "sft-audit",
     "pricing",
     "eval-data",
     "bestofn",
@@ -88,8 +97,9 @@ STAGE_ORDER = [
     "train",
 ]
 TODAY_SLUG = date.today().strftime("%y%m%d")
+DEFAULT_SFT_DIR = TRAINING_DIR / "data/planner/sft_runs" / f"{TODAY_SLUG}_pipeline"
+SFT_PIPELINE_STAGES = {"sft-data", "sft-audit"}
 DEFAULT_OUTPUT_DIRS = {
-    "sft": TRAINING_DIR / "data/planner/sft_runs" / f"{TODAY_SLUG}_pipeline",
     "pricing": TRAINING_DIR / "data/planner/attraction_prices" / "pipeline",
     "eval-data": TRAINING_DIR / "data/planner" / f"eval_{TODAY_SLUG}",
     "bestofn": TRAINING_DIR / "data/planner/bestofn" / "pipeline",
@@ -173,7 +183,6 @@ def normalize_stages(values: Sequence[str] | None) -> list[str]:
 def stage_output_dir(args: argparse.Namespace, stage: str, stages: Sequence[str]) -> Path:
     """取得阶段输出目录。单阶段时 --output-dir 是通用快捷写法。"""
     explicit_name = {
-        "sft": "sft_dir",
         "pricing": "pricing_dir",
         "eval-data": "eval_data_dir",
         "bestofn": "bestofn_dir",
@@ -193,9 +202,23 @@ def stage_output_dir(args: argparse.Namespace, stage: str, stages: Sequence[str]
     return DEFAULT_OUTPUT_DIRS[stage]
 
 
+def sft_output_dir(args: argparse.Namespace, stages: Sequence[str]) -> Path:
+    """取得 SFT 数据 run 目录，供生成和审计阶段共用。"""
+    if args.sft_dir:
+        return project_path(args.sft_dir)
+    active_stages = [item for item in stages if item != "preflight"]
+    if args.output_dir:
+        if all(item in SFT_PIPELINE_STAGES for item in active_stages):
+            return project_path(args.output_dir)
+        if len(active_stages) != 1:
+            raise PipelineError("同时运行多个阶段时，请分别使用 --sft-dir、--dpo-dir 等阶段目录参数")
+        raise PipelineError(f"--output-dir 只能用于当前唯一阶段 {active_stages[0]}，不能用于 SFT 数据目录")
+    return DEFAULT_SFT_DIR
+
+
 def sft_dataset_prefix(args: argparse.Namespace, stages: Sequence[str]) -> str:
     """取得当前 SFT 阶段导出的数据集前缀。"""
-    output_dir = stage_output_dir(args, "sft", stages)
+    output_dir = sft_output_dir(args, stages)
     prefix = args.sft_dataset_prefix or f"trip_planner_sft_{safe_slug(output_dir.name)}"
     return safe_slug(prefix)
 
@@ -220,7 +243,8 @@ def generated_training_datasets(
     """返回本次流水线最后一个训练数据阶段的 train/val 数据集名和类型。
 
     DPO 优先于 Best-of-N，Best-of-N 优先于普通 SFT。这样同一次运行包含
-    ``sft -> bestofn -> dpo -> train`` 时，训练自动接到最后生成的 DPO 数据。
+    ``sft-data -> sft-audit -> bestofn -> dpo -> train`` 时，
+    训练自动接到最后生成的 DPO 数据。
     """
     if "dpo" in stages:
         prefix = dpo_dataset_prefix(args, stages)
@@ -228,7 +252,7 @@ def generated_training_datasets(
     if "bestofn" in stages:
         prefix = bestofn_dataset_prefix(args, stages)
         return f"{prefix}_sft_train", f"{prefix}_sft_val", "sft"
-    if "sft" in stages:
+    if "sft-audit" in stages:
         prefix = sft_dataset_prefix(args, stages)
         return f"{prefix}_train", f"{prefix}_val", "sft"
     return None
@@ -238,8 +262,8 @@ def resolve_input_records(args: argparse.Namespace, stage: str, stages: Sequence
     """解析需要 records.jsonl 的阶段输入，支持 SFT/评估集自动交接。"""
     if args.records:
         return project_path(args.records)
-    if stage in {"pricing", "bestofn", "dpo"} and "sft" in stages:
-        return stage_output_dir(args, "sft", stages) / "records.jsonl"
+    if stage in {"pricing", "bestofn", "dpo"} and any(item in SFT_PIPELINE_STAGES for item in stages):
+        return sft_output_dir(args, stages) / "records.jsonl"
     if stage == "eval" and "eval-data" in stages:
         return stage_output_dir(args, "eval-data", stages) / "records.jsonl"
     raise PipelineError(
@@ -410,13 +434,28 @@ def run_sft_context(args: argparse.Namespace, python: str) -> None:
     run_step(args, "PlannerContext smoke", command)
 
 
-def run_sft(args: argparse.Namespace, python: str, stages: Sequence[str]) -> None:
-    output_dir = stage_output_dir(args, "sft", stages)
+def resolve_sft_records(args: argparse.Namespace, stages: Sequence[str]) -> Path:
+    """取得 SFT 审计输入。显式 --records 优先，否则读取当前 SFT run。"""
+    if args.records:
+        return project_path(args.records)
+    return sft_output_dir(args, stages) / "records.jsonl"
+
+
+def run_sft_data(args: argparse.Namespace, python: str, stages: Sequence[str]) -> None:
+    output_dir = sft_output_dir(args, stages)
     refuse_existing_run(output_dir, [output_dir / "records.jsonl"], args)
-    write_manifest(args, "sft", output_dir, stages)
+    write_manifest(args, "sft-data", output_dir, stages)
 
     run_step(args, "SFT 数据生成", build_sft_command(args, python, output_dir), env=usage_log_env(output_dir))
     records = output_dir / "records.jsonl"
+    if not args.dry_run:
+        require_nonempty_file(records, "SFT records.jsonl")
+
+
+def run_sft_audit(args: argparse.Namespace, python: str, stages: Sequence[str]) -> None:
+    output_dir = sft_output_dir(args, stages)
+    records = resolve_sft_records(args, stages)
+    write_manifest(args, "sft-audit", output_dir, stages)
     if not args.dry_run:
         require_nonempty_file(records, "SFT records.jsonl")
 
@@ -893,7 +932,7 @@ def run_validate(args: argparse.Namespace, python: str, stages: Sequence[str]) -
     if args.validate_eval_gt:
         targets.append(("eval-gt", project_path(args.validate_eval_gt), "校验 Eval GT"))
 
-    if not targets and "sft" in stages:
+    if not targets and "sft-audit" in stages:
         prefix = sft_dataset_prefix(args, stages)
         lf_dir = LLAMAFACTORY_DATA_DIR / "generated"
         targets.extend(
@@ -1172,6 +1211,9 @@ def build_training_overrides(
     has_dataset_config = config_has_key(config, "dataset")
     has_v1_dataset = config_has_key(config, "train_dataset")
 
+    if generated_plan and args.train_dataset:
+        raise PipelineError("--train-dataset 只用于训练已有数据；同一次生成数据时无需手动指定")
+
     if generated_plan and not has_dataset_config:
         if has_v1_dataset:
             raise PipelineError(
@@ -1198,6 +1240,16 @@ def build_training_overrides(
                 f"训练配置 stage={config_stage} 与本轮自动接入的数据类型 {data_kind} 不一致；"
                 f"请更换配置，当前数据集为 {train_name}。"
             )
+    elif args.train_dataset:
+        if not has_dataset_config:
+            if has_v1_dataset:
+                raise PipelineError(
+                    "当前 --train-dataset 只支持经典 LLaMA-Factory 配置的 dataset/eval_dataset；"
+                    "v1 配置使用 train_dataset 文件路径，请先准备对应 v1 数据配置。"
+                )
+            raise PipelineError(f"训练配置没有 dataset 字段，无法覆盖训练数据集：{relative_or_absolute(config)}")
+        train_name = args.train_dataset
+        eval_name = args.train_eval_dataset or config_scalar(config, "eval_dataset")
     elif has_dataset_config:
         train_name = config_scalar(config, "dataset")
         eval_name = config_scalar(config, "eval_dataset")
@@ -1211,7 +1263,7 @@ def build_training_overrides(
     if has_dataset_config and train_name:
         if args.train_dataset_dir:
             dataset_dir = project_path(args.train_dataset_dir).resolve()
-        elif generated_plan:
+        elif generated_plan or args.train_dataset:
             dataset_dir = LLAMAFACTORY_DATA_DIR.resolve()
         else:
             configured_dataset_dir = config_scalar(config, "dataset_dir")
@@ -1433,9 +1485,9 @@ def run_preflight(args: argparse.Namespace, stages: Sequence[str], python: str) 
     for label, present in key_status.items():
         print(f"  {'已找到' if present else '未找到'}：{label}")
     print("说明：preflight 只检查文件、依赖和配置名，不会调用 API、启动模型或修改训练数据。")
-    needs_amap = any(stage in {"sft", "sft-context", "eval-data"} for stage in stages)
+    needs_amap = any(stage in {"sft-data", "sft-context", "eval-data"} for stage in stages)
     needs_amap = needs_amap or ("pricing" in stages and args.collect_context)
-    needs_data_gen = "sft" in stages or "dpo" in stages
+    needs_data_gen = any(stage in {"sft-data", "dpo"} for stage in stages)
     needs_data_gen = needs_data_gen or ("eval-data" in stages and args.request_source == "llm")
     needs_data_gen = needs_data_gen or ("pricing" in stages and args.estimate_prices)
     needs_data_gen = needs_data_gen or ("eval" in stages and args.eval_run_judge)
@@ -1592,6 +1644,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="经典 LLaMA-Factory 数据目录；默认使用项目内 training/data/llamafactory。",
     )
     training.add_argument(
+        "--train-dataset",
+        help="训练已有导出数据时，指定 dataset_info.json 中的 dataset 名称。",
+    )
+    training.add_argument(
+        "--train-eval-dataset",
+        help="训练已有导出数据时，指定 dataset_info.json 中的 eval_dataset 名称；不传则沿用 YAML 配置。",
+    )
+    training.add_argument(
         "--train-output-dir",
         type=Path,
         help="训练输出目录；包含数据阶段时默认按本轮数据集自动生成隔离目录。",
@@ -1608,8 +1668,20 @@ def validate_args(args: argparse.Namespace, stages: Sequence[str]) -> None:
         raise PipelineError("--val-ratio 必须在 [0, 1) 内")
     if args.resume and "preflight" in stages and len(stages) == 1:
         print("提示：单独执行 preflight 时 --resume 不会产生影响。")
-    if "pricing" in stages and not args.collect_context and not args.records and "sft" not in stages:
-        raise PipelineError("pricing 阶段需要 --records，或传 --collect-context，或同一次运行中先执行 sft")
+    if args.train_eval_dataset and not args.train_dataset:
+        raise PipelineError("--train-eval-dataset 需要和 --train-dataset 一起使用")
+    if (
+        "train" in stages
+        and "sft-data" in stages
+        and "sft-audit" not in stages
+        and "dpo" not in stages
+        and not args.train_dataset
+    ):
+        raise PipelineError("SFT 数据要先经过 sft-audit 导出后才能训练；请追加 --stage sft-audit，或单独传 --train-dataset")
+    if "pricing" in stages and not args.collect_context and not args.records and not any(
+        item in SFT_PIPELINE_STAGES for item in stages
+    ):
+        raise PipelineError("pricing 阶段需要 --records，或传 --collect-context，或同一次运行中先执行 sft-data")
 
 
 def main() -> int:
@@ -1625,8 +1697,10 @@ def main() -> int:
             run_sft_request(args, python)
         if "sft-context" in stages:
             run_sft_context(args, python)
-        if "sft" in stages:
-            run_sft(args, python, stages)
+        if "sft-data" in stages:
+            run_sft_data(args, python, stages)
+        if "sft-audit" in stages:
+            run_sft_audit(args, python, stages)
         if "pricing" in stages:
             run_pricing(args, python, stages)
         if "eval-data" in stages:

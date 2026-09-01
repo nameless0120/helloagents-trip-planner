@@ -15,7 +15,7 @@ training/data/planner/
 评测集 records 必须包含结构化 `party`、`budget_constraint` 和 `PlannerContext`。SFT 数据生成统一从：
 
 ```text
-training/scripts/run_pipeline.py --stage sft
+training/scripts/run_pipeline.py --stage sft-data
 ```
 
-开始，输出先经过预算审计、可用性分类和 `TripPlan` 校验，再导出到 `training/data/llamafactory/generated/`。
+开始。生成 `records.jsonl` 后，再用 `--stage sft-audit` 做预算审计、可用性分类、`TripPlan` 校验和 LLaMA-Factory 导出。
