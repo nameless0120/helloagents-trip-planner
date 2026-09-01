@@ -10,7 +10,7 @@
 - 结构化工具快照：后端收集景点、酒店、餐饮、天气、价格 hint 和候选计数，减少模型自由编造。
 - 预算账本训练口径：显式区分酒店单房每晚价、景点成人票价、餐饮单人单餐价和同行人数。
 - Web 交互界面：Vue 3 + TypeScript + Ant Design Vue，支持旅行需求填写和结果展示。
-- 后训练资产：包含 SFT 数据、冻结评估集、规则评测指标、baseline 汇总和数据生成脚本。
+- 后训练资产：包含 SFT 数据、冻结评估集、规则评测指标和数据生成脚本。
 
 ## 界面预览
 
@@ -76,8 +76,7 @@ helloagents-trip-planner/
 │   ├── configs/             # 按模型分组的训练配置
 │   ├── data/                # 训练/评估数据
 │   ├── docs/                # 协议、指标和后训练说明
-│   ├── outputs/eval/        # 公开的评测汇总
-│   ├── prompts/             # 数据生成 prompt
+│   ├── outputs/eval/        # 评测输出入口说明
 │   └── scripts/             # 训练脚本，按 shared/serving/validation 和当前任务分组
 ├── PROJECT_STRUCTURE.md  # 项目级目录索引
 └── README.md
@@ -164,7 +163,7 @@ npm run dev -- --host 0.0.0.0 --port 5173
   -> （可选）LoRA 训练
 ```
 
-当前新数据从 `training/scripts/planner/data/generate_sft_data.py` 开始，但正式运行不要直接拼接多个旧脚本，统一使用 `training/scripts/run_pipeline.py`。`training/scripts/eval/generate_sft_data.py` 只是旧流程兼容入口。
+当前后训练统一从 `training/scripts/run_pipeline.py` 开始。SFT 数据生成的底层脚本是 `training/scripts/planner/data/generate_sft_data.py`。
 
 ### 1. 准备环境和配置
 
@@ -284,8 +283,7 @@ RUN_DIR="training/data/planner/sft_runs/$(date +%Y%m%d_%H%M%S)_reader_train"
 - [training/README.md](training/README.md)：后训练目录说明
 - [training/STRUCTURE.md](training/STRUCTURE.md)：训练资产、数据、脚本、报告的目录边界
 - [training/docs/README.md](training/docs/README.md)：长期文档索引
-- [training/outputs/eval/README.md](training/outputs/eval/README.md)：评测输出与公开报告索引
-- [training/outputs/eval/reports/260512_bestofn_replay_extended_w10/README.md](training/outputs/eval/reports/260512_bestofn_replay_extended_w10/README.md)：2026-05-12 当前评测报告包
+- [training/outputs/eval/README.md](training/outputs/eval/README.md)：评测输出说明
 
 当前仓库保留主线材料，不上传历史数据、私有交流记录、模型权重、checkpoint 和大规模运行产物。
 
@@ -297,7 +295,7 @@ RUN_DIR="training/data/planner/sft_runs/$(date +%Y%m%d_%H%M%S)_reader_train"
 - Python / Node 本地环境
 - `node_modules/`、构建产物、日志
 - 训练输出、模型权重、checkpoint
-- 历史管线和废弃 prompt 消融
+- 本地实验目录和临时 prompt 文件
 - 私有作者交流、会话记忆和临时文档
 
 `.env.example` 会保留在仓库中，作为配置模板。

@@ -105,7 +105,7 @@ cd helloagents-trip-planner
   --request-source controlled \
   --date-mode mixed \
   --workers 1 \
-  --sft-dir training/data/planner/sft_runs/260901_reader_smoke \
+  --sft-dir training/data/planner/sft_runs/reader_smoke \
   --config training/configs/qwen25_7b/sft_qwen25_7b_lora.yaml \
   --llamafactory-root ../LLaMA-Factory \
   --llamafactory-cli .venv-training-py311/bin/llamafactory-cli
@@ -123,7 +123,7 @@ cd helloagents-trip-planner
   --request-source controlled \
   --date-mode mixed \
   --workers 1 \
-  --sft-dir training/data/planner/sft_runs/260901_reader_smoke \
+  --sft-dir training/data/planner/sft_runs/reader_smoke \
   --config training/configs/qwen25_7b/sft_qwen25_7b_lora.yaml \
   --llamafactory-root ../LLaMA-Factory \
   --dry-run

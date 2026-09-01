@@ -1,33 +1,27 @@
-# Best-of-N Pipeline
+# Best-of-N
 
-Best-of-N is the first RL-adjacent step for the current planner. It samples multiple TripPlan
-candidates for the same `PlannerContext`, scores them with the existing rule
-evaluator, and exports the best response for later SFT, SimPO, DPO, or GRPO
-smoke runs.
-
-Recommended smoke:
+Best-of-N 为同一份 PlannerContext 生成多个候选，用当前规则计算分数，再导出选中的 SFT 样本和 DPO pair。
 
 ```bash
 .venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
   --stage bestofn \
-  --records training/data/planner/sft_runs/<YYMMDD>_<run_slug>/records.jsonl \
-  --bestofn-dir training/data/planner/bestofn/260831_smoke20 \
+  --records training/data/planner/sft_runs/<run>/records.jsonl \
+  --bestofn-dir training/data/planner/bestofn/<run> \
   --bestofn-api-model trip-planner-sft \
   --bestofn-spec t02:0.2:1 \
   --bestofn-spec t05:0.5:2 \
   --bestofn-spec t08:0.8:1 \
-  --limit 20 \
-  --bestofn-shuffle
+  --limit 20
 ```
 
-这一个命令会依次构建 prompt、生成候选、选择 winner，并导出 SFT/DPO 文件。需要定位单个步骤时，再直接运行对应的底层脚本。
+流程是：
 
-Selection uses a conservative reward:
+```text
+records
+  -> build_prompts.py
+  -> generate_candidates.py
+  -> select_best.py
+  -> LLaMA-Factory SFT/DPO 文件
+```
 
-- hard protocol items are heavily penalized when false;
-- `sft_hard_pass` is preferred whenever any candidate passes it;
-- soft rewards include recomputed budget fit, budget relationship, meal cost
-  scale, meal diversity, attraction diversity, and user budget constraints.
-
-Do not use `eval` or `eval_hard` records as training prompts. Keep those frozen
-for final comparison.
+Best-of-N 只使用当前 SFT records，不使用冻结评测集作为训练输入。正式训练前仍需运行 `validation/validate_trip_plan.py`。

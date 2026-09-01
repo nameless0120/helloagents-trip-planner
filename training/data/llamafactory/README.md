@@ -1,21 +1,18 @@
-# LLaMAFactory Data Entry
+# LLaMA-Factory 数据入口
 
-更新时间：2026-05-12
-
-这个目录只保留 LLaMAFactory 的轻量入口和 manifest。大体积 train/val JSON/YAML 放在 `generated/`，默认由 `.gitignore` 排除。
-
-## 目录
+这个目录只登记当前训练数据。`dataset_info.json` 保留通用的 SFT/DPO 数据集名，实际 train/val 文件由 `run_pipeline.py` 写入 `generated/`，该目录默认被忽略。
 
 ```text
 training/data/llamafactory/
-├── dataset_info.json     # 本地训练入口，file_name 指向 generated/
-├── manifests/            # 可提交的小体积生成 manifest
-├── generated/            # ignored，本地 train/val JSON/YAML
-└── archive/              # ignored，历史导出
+├── dataset_info.json
+└── generated/              # 本地生成的 train/val 文件
 ```
 
-## 规则
+SFT 和 DPO 训练配置分别使用：
 
-- 新导出的 train/val JSON/YAML 默认写入 `generated/`。
-- 需要公开记录的数据生成来源、样本数、混合比例和导出时间，写入 `manifests/`。
-- 不要把大体积 train/val JSON/YAML 直接放回本目录根层。
+```text
+training/configs/qwen25_7b/sft_qwen25_7b_lora.yaml
+training/configs/qwen25_7b/dpo_qwen25_7b_lora.yaml
+```
+
+不要手动复制数据或维护多套 dataset 注册表。总入口会在导出阶段更新登记信息。

@@ -1,4 +1,4 @@
 interface:
   display_name: "Trip Planner Eval Compare"
   short_description: "Run and compare Planner trip-planner evals."
-  default_prompt: "Run or compare Planner standard/hard evals for helloagents-trip-planner using the fixed records, rule metrics, slices, optional judge, and the canonical full-report Markdown format."
+  default_prompt: "Run or compare Planner standard/hard evals for helloagents-trip-planner using the fixed records, rule metrics, slices, optional judge, and current Markdown report format."

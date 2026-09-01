@@ -2,24 +2,16 @@
 
 更新时间：2026-08-31
 
-景点票价目录按用途分层，避免审核报告、快照和过程产物混在一起。
+景点票价阶段只保留运行说明。候选、审核报告、快照和日志都由总入口在本地生成，
+不作为仓库里的固定训练输入。
 
 ```text
 attraction_prices/
-├── pipeline/      # 总入口默认运行目录，默认忽略
-│   ├── reports/   # 本轮审核报告
-│   ├── snapshots/ # 本轮小体积快照
-│   └── generated/ # 本轮候选、估价 JSONL 和日志
-├── reports/       # 可读审核报告和估算说明
-├── snapshots/     # 小体积 JSON 快照，可用于人工审核或合并到后端票价表
-└── generated/     # ignored，候选 JSONL、估价 JSONL、运行日志
+└── pipeline/      # 总入口运行目录，默认忽略
+    ├── reports/   # 本轮审核报告
+    ├── snapshots/ # 本轮小体积快照
+    └── generated/ # 本轮候选、估价 JSONL 和日志
 ```
-
-## 当前快照
-
-- `snapshots/attraction_price_table_todo.json`：缺价景点待补模板。
-- `snapshots/request_count_ge5_price_table_review_draft.json`：高频景点分桶后的 review draft。
-- `snapshots/request_count_ge5_attraction_price_table_llm_estimated.json`：强模型估算票价表快照。
 
 ## 推荐入口
 
@@ -42,4 +34,5 @@ attraction_prices/
 
 这些脚本保留用于单步调试；正式流程优先使用总入口。
 
-估算结果只用于训练预算账本，不代表官方或实时票价。线上使用前需要人工审核并合并到 `backend/app/planner/attraction_price_table.json`。
+估算结果只用于训练预算账本，不代表官方或实时票价。线上使用前需要人工审核，
+再按需合并到 `backend/app/planner/attraction_price_table.json`。

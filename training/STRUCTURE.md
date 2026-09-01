@@ -1,58 +1,40 @@
-# Training Asset Structure
+# Training 目录约定
 
-更新时间：2026-08-31
+`training/` 只保留当前代码、当前协议和可复用输入。运行产生的大文件、日志、模型权重和临时数据由 `.gitignore` 排除。
 
-这个文件定义 `training/` 下数据、脚本、文档和评测产物的边界。后续整理文件时先遵守这里的生命周期规则，再决定是否移动或归档。
+## 目录职责
 
-## 总原则
+| 路径 | 用途 |
+| --- | --- |
+| `configs/qwen25_7b/` | 当前 SFT、DPO 配置 |
+| `data/planner/eval/` | standard 冻结评测输入 |
+| `data/planner/eval_hard/` | hard 冻结评测输入 |
+| `data/planner/attraction_prices/` | 票价阶段的本地运行目录 |
+| `data/planner/sft_runs/` | SFT 运行目录，默认本地生成 |
+| `data/planner/dpo/` | DPO 运行目录，默认本地生成 |
+| `data/llamafactory/` | LLaMA-Factory 数据登记和本地导出目录 |
+| `patches/` | 第三方训练依赖补丁 |
+| `docs/` | 教程、PlannerContext 协议、数据审计和评测指标 |
+| `scripts/run_pipeline.py` | 后训练总入口 |
+| `scripts/planner/` | SFT、审计、票价、评测输入和 Best-of-N |
+| `scripts/eval/` | 通用评测和 DPO |
+| `scripts/serving/` | Planner 模型服务 |
+| `scripts/validation/` | SFT、DPO、评测数据校验 |
+| `scripts/shared/` | JSONL、路径和 LLM 客户端公共代码 |
+| `outputs/eval/` | 本地评测输出目录，只提交入口说明 |
 
-- `docs/` 放长期有效的教程、协议、指标、审计口径和阶段结论；面向读者的内容在 `docs/教程/`，支撑材料在 `docs/内部文档/`。
-- `data/` 放可复用输入、冻结评估集、训练数据入口和轻量 manifest。
-- `scripts/` 放当前仍可能运行的入口；旧实验脚本只保留在本地 legacy/archive 中。
-- `outputs/eval/reports/` 放可公开提交的轻量报告包；完整 generations、日志、rule eval 明细和模型输出留在本地忽略目录。
+## 数据生命周期
 
-## 目录边界
+1. `run_pipeline.py` 为每一轮创建独立 run 目录。
+2. records 先经过预算审计和可用性分类，再导出为 LLaMA-Factory 数据。
+3. `eval/` 和 `eval_hard/` 只作为评测输入，不作为训练输入。
+4. `data/llamafactory/generated/`、SFT/DPO run、评测输出和训练输出默认不提交。
+5. 训练配置使用通用文件名；实验参数通过命令行和独立 run 目录记录。
 
-| 路径 | 状态 | 说明 |
-| --- | --- | --- |
-| `configs/qwen25_7b/` | 主线配置 | 保留可复现训练配置；`.serve_*.yaml` 和旧归档配置由 `.gitignore` 排除。 |
-| `data/planner/eval/` | 冻结输入 | standard 评估集，公开保留 `records.jsonl`、`requests.jsonl`、摘要和重建说明。 |
-| `data/planner/eval_hard/` | 冻结输入 | hard 评估集。旧名 `eval_harder` 不再作为主入口。 |
-| `data/planner/attraction_prices/` | 票价资产 | `reports/` 放审核说明，`snapshots/` 放小体积票价表快照，`generated/` 放候选/估价 JSONL 和日志。 |
-| `data/planner/sft*/` | 本地生成 | SFT run、realbudget run、best-of-n 数据默认按明确 run 目录生成并忽略，不能混写到旧目录。 |
-| `data/planner/dpo/` | 本地生成 | prompt/candidate/pair/judge 数据默认本地保留；公开文档只描述口径。 |
-| `data/llamafactory/` | 训练入口 | `dataset_info.json` 和 `manifests/` 可提交；大体积 train/val JSON/YAML 放 `generated/` 并默认忽略。 |
-| `patches/` | 第三方依赖补丁 | 记录 LLaMA-Factory 的固定基础 commit 和本项目需要的源码改动。 |
-| `docs/` | 长期文档 | 需要有索引；教程放 `教程/`，协议、指标、审计和实验记录放 `内部文档/`；旧阶段结论如果不再代表主线，应在索引中标注历史/参考。 |
-| `scripts/shared/` | 公共 helper | JSONL、路径、环境变量和 LLM client 等复用代码。 |
-| `scripts/run_pipeline.py` | 后训练总入口 | 按阶段调度当前 SFT、票价候选、Best-of-N、DPO、评测和训练脚本。 |
-| `scripts/serving/` | 服务入口 | 本地 Planner 模型服务和服务管理脚本。 |
-| `scripts/validation/` | 校验入口 | SFT/DPO/Eval 输出 schema 与格式校验。 |
-| `scripts/planner/` | 当前主线 | 按 `data/`、`eval/`、`audit/`、`pricing/`、`bestofn/`、`training/` 分组。 |
-| `scripts/eval/` | 兼容与评测 | 旧 SFT 生成/清洗/切分、评测和通用 DPO helper；不作为当前 SFT 主线入口。 |
-| `scripts/archive/` | legacy | 只作为迁移参考或本地 DPO helper 来源，不作为当前公开主线。 |
-| `outputs/eval/reports/` | 公开报告 | 只放 Markdown 和小体积指标 JSON。 |
-| `docs/后训练产物/本地资产索引.md` | 本地地图 | 记录本机模型、数据、评测输出、缓存和归档的归属；不等于公开提交清单。 |
-| `outputs/eval/by_model/`、`comparisons/`、`audits/`、`logs/` | 本地生成 | 完整评测产物默认忽略；需要公开时整理成 `reports/<YYMMDD>_<slug>/`。 |
+## 入口规则
 
-## 新增资产命名
-
-- 新 run 目录用 `YYMMDD_<slug>`，例如 `260512_bestofn_replay_extended_w10`。
-- 新 SFT/DPO 数据必须写入明确 run 目录，并带 manifest 或摘要；不要复用旧 `data/planner/sft/` 作为长期混合池。
-- 评测输入只使用 `data/planner/eval/` 和 `data/planner/eval_hard/`。如果后端检索逻辑变了，先 rebuild context，保留同一批 request 和 record id。
-- 大体积产物不直接加入公开仓库。公开结论先压缩到 `outputs/eval/reports/`。
-
-## 文档维护规则
-
-- 根 README 只链接当前入口，不链接本地 ignored 产物。
-- `training/README.md` 说明当前主线状态和常用命令。
-- `training/docs/README.md` 维护长期文档索引和文档状态。
-- 改数据、脚本或报告路径时，同步更新这三个入口和 `.gitignore`。
-- 旧名保留时要写明“历史名/本地旧产物”，不要让新人误以为仍是主线。
-
-## 后续整理顺序
-
-1. 修文档入口和失效链接。
-2. 给当前数据、脚本、报告建立索引。
-3. 只移动不会影响命令的归档/私有材料。
-4. 对脚本路径做批量迁移前，先用 `rg` 找引用，再分批改命令和 README。
+- SFT 数据从 `scripts/planner/data/generate_sft_data.py` 开始。
+- 完整流程从 `scripts/run_pipeline.py` 开始。
+- 训练使用 `configs/qwen25_7b/sft_qwen25_7b_lora.yaml` 或 `dpo_qwen25_7b_lora.yaml`。
+- 长上下文 DPO 训练前先应用 `patches/llamafactory-9a0cfdcc-local.patch`。
+- 新脚本必须在对应目录 README 和总入口中有明确用途；没有当前调用关系的实验工具不放入主线。
