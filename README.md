@@ -150,6 +150,116 @@ npm run dev -- --host 0.0.0.0 --port 5173
 
 - Web: `http://localhost:5173`
 
+## 后训练快速开始
+
+如果你要复现 SFT 或继续做 DPO，不需要先启动 backend 和 frontend。后训练从下面这个总入口开始：
+
+```text
+请求分布
+  -> PlannerContext
+  -> 强模型生成 TripPlan JSON
+  -> 预算审计
+  -> 可用性分类
+  -> 导出 LLaMA-Factory 数据
+  -> （可选）LoRA 训练
+```
+
+当前新数据从 `training/scripts/planner/data/generate_sft_data.py` 开始，但正式运行不要直接拼接多个旧脚本，统一使用 `training/scripts/run_pipeline.py`。`training/scripts/eval/generate_sft_data.py` 只是旧流程兼容入口。
+
+### 1. 准备环境和配置
+
+在项目根目录创建训练环境并安装依赖。已有可用的 CUDA PyTorch 环境时，沿用现有环境，不要为了安装训练依赖重复替换 PyTorch：
+
+```bash
+cd helloagents-trip-planner
+python3 -m venv .venv-training-py311
+source .venv-training-py311/bin/activate
+python -m pip install -r training/requirements-training.txt
+```
+
+训练数据生成至少需要在 `backend/.env` 或项目根 `.env` 中配置：
+
+```bash
+AMAP_MAPS_API_KEY=your_amap_key
+DATA_GEN_API_KEY=your_data_generation_key
+DATA_GEN_BASE_URL=https://api.deepseek.com
+DATA_GEN_MODEL=deepseek-v4-pro
+DATA_GEN_THINKING=false
+```
+
+也可以继续使用 `DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL` 等变量。数据生成默认关闭 thinking；关闭时不会发送 `reasoning_effort` 或 `thinking` 参数，适合直接生成后端需要的 JSON。
+
+如果要训练，还要准备项目指定的 LLaMA-Factory checkout。已经准备好的可以跳过 clone：
+
+```bash
+cd ..
+git clone https://github.com/hiyouga/LLaMA-Factory.git LLaMA-Factory
+cd LLaMA-Factory
+git checkout 9a0cfdccfa234304879f83e0c2c17b5ede8121fe
+git apply ../helloagents-trip-planner/training/patches/llamafactory-9a0cfdcc-local.patch
+cd ../helloagents-trip-planner
+.venv-training-py311/bin/python3 -m pip install -e ../LLaMA-Factory --no-deps
+```
+
+### 2. 先检查，不调用 API
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage preflight \
+  --strict-preflight
+```
+
+只想看完整命令、不生成数据和不训练时，在正式命令末尾加 `--dry-run`。
+
+### 3. 先跑 SFT 数据流程
+
+这条命令会调用高德和数据生成模型，完成生成、预算审计、可用性分类、干净子集导出和格式校验：
+
+```bash
+RUN_DIR="training/data/planner/sft_runs/$(date +%Y%m%d_%H%M%S)_reader_smoke"
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage sft \
+  --count 20 \
+  --request-source controlled \
+  --date-mode mixed \
+  --workers 1 \
+  --sft-dir "$RUN_DIR"
+```
+
+生成前可以先只看请求分布，不调用任何外部服务：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage sft-request \
+  --count 20 \
+  --request-source controlled \
+  --date-mode mixed
+```
+
+本轮结果会写到 `training/data/planner/sft_runs/<run>/`。重点看 `records.jsonl`、`errors.jsonl`、`audit_budget/`、`classification/` 和 `export_budget_clean/`。只有通过审计和分类的样本才会导出到 `training/data/llamafactory/generated/`。
+
+### 4. 从本轮数据直接训练
+
+确认 SFT 数据流程没问题后，在同一次命令中追加 `--stage train`、训练配置和 LLaMA-Factory 路径：
+
+```bash
+RUN_DIR="training/data/planner/sft_runs/$(date +%Y%m%d_%H%M%S)_reader_train"
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage sft \
+  --stage train \
+  --count 20 \
+  --request-source controlled \
+  --date-mode mixed \
+  --workers 1 \
+  --sft-dir "$RUN_DIR" \
+  --config training/configs/qwen25_7b/sft_qwen25_7b_lora.yaml \
+  --llamafactory-root ../LLaMA-Factory
+```
+
+这条命令会自动把本轮导出的 `dataset`、`eval_dataset`、`dataset_dir` 和训练输出目录接给 LLaMA-Factory，不需要手动改 YAML 或复制 JSON。训练阶段需要本地模型缓存、CUDA GPU 和已经应用项目补丁的 LLaMA-Factory；只生成数据时不要加 `--stage train`。
+
+详细的阶段参数、DPO、评测和补丁说明见 [training/README.md](training/README.md) 和 [LLaMA-Factory 本地改动说明](training/docs/内部文档/DPO分块LogProb方案说明.md)。
+
 ## API 概览
 
 启动后端后可以访问 `http://localhost:7000/docs` 查看完整 OpenAPI 文档。主要接口：
