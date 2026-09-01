@@ -17,4 +17,4 @@
 
 ### 致谢
 
-感谢 [@nameless0120](https://github.com/nameless0120) 提交 [Issue #4](https://github.com/nameless0120/helloagents-trip-planner/issues/4)，帮我们发现旧版数据生成入口的 `party` 字段校验问题，也促成了这次数据生成、审计和训练流程的重新整理。
+感谢 [@cqray1990](https://github.com/cqray1990) 提交 [Issue #4](https://github.com/nameless0120/helloagents-trip-planner/issues/4)，帮我们发现旧版数据生成入口的 `party` 字段校验问题，也促成了这次数据生成、审计和训练流程的重新整理。
