@@ -8,32 +8,19 @@ smoke runs.
 Recommended smoke:
 
 ```bash
-.venv-training-py311/bin/python3 training/scripts/planner/bestofn/build_prompts.py \
-  --records training/data/planner/dpo/prompt_source/records.jsonl \
-  --output training/data/planner/bestofn/260511_smoke20/prompts.jsonl \
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage bestofn \
+  --records training/data/planner/sft_runs/<YYMMDD>_<run_slug>/records.jsonl \
+  --bestofn-dir training/data/planner/bestofn/260831_smoke20 \
+  --bestofn-api-model trip-planner-sft \
+  --bestofn-spec t02:0.2:1 \
+  --bestofn-spec t05:0.5:2 \
+  --bestofn-spec t08:0.8:1 \
   --limit 20 \
-  --shuffle
-
-.venv-training-py311/bin/python3 training/scripts/planner/bestofn/generate_candidates.py \
-  --prompts training/data/planner/bestofn/260511_smoke20/prompts.jsonl \
-  --output training/data/planner/bestofn/260511_smoke20/candidates.jsonl \
-  --base-url http://127.0.0.1:4396/v1 \
-  --api-model trip-planner-sft \
-  --spec t02:0.2:1 \
-  --spec t05:0.5:2 \
-  --spec t08:0.8:1 \
-  --workers 1 \
-  --resume
-
-.venv-training-py311/bin/python3 training/scripts/planner/bestofn/select_best.py \
-  --prompts training/data/planner/bestofn/260511_smoke20/prompts.jsonl \
-  --candidates training/data/planner/bestofn/260511_smoke20/candidates.jsonl \
-  --selected-output training/data/planner/bestofn/260511_smoke20/selected.jsonl \
-  --lf-sft-train training/data/llamafactory/generated/trip_bestofn_260511_smoke20_sft_train.json \
-  --lf-sft-val training/data/llamafactory/generated/trip_bestofn_260511_smoke20_sft_val.json \
-  --lf-pair-train training/data/llamafactory/generated/trip_bestofn_260511_smoke20_pair_train.json \
-  --lf-pair-val training/data/llamafactory/generated/trip_bestofn_260511_smoke20_pair_val.json
+  --bestofn-shuffle
 ```
+
+这一个命令会依次构建 prompt、生成候选、选择 winner，并导出 SFT/DPO 文件。需要定位单个步骤时，再直接运行对应的底层脚本。
 
 Selection uses a conservative reward:
 

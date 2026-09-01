@@ -220,6 +220,12 @@ def main() -> None:
 
     source = args.source or args.records.stem
     rows = [prompt_row_from_record(record, source, system_prompt) for record in records]
+    if args.resume and args.output.exists():
+        old_rows = read_jsonl(args.output)
+        done_ids = {row.get("prompt_id") for row in old_rows if row.get("prompt_id")}
+        new_rows = [row for row in rows if row.get("prompt_id") not in done_ids]
+        rows = old_rows + new_rows
+        print(f"resume: existing={len(old_rows)}, add={len(new_rows)}")
     write_jsonl(args.output, rows)
 
     summary_path = args.summary_output or (args.output.parent / "prompts_summary.json")

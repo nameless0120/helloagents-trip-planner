@@ -156,6 +156,8 @@ lightning_logs/
 /training/data/planner/dpo/
 /training/data/planner/sft/
 /training/data/planner/sft_runs/
+/training/data/planner/attraction_prices/pipeline/
+/training/data/planner/eval_*/
 /training/data/planner/sft_current/
 /training/data/planner/sft_realbudget_runs/
 /training/data/planner/sft/archive/
@@ -175,6 +177,7 @@ lightning_logs/
 /training/outputs/archive/
 /training/outputs/eval/archive/
 /training/outputs/eval/logs/
+/training/outputs/eval/pipeline/
 /training/outputs/eval/reports/
 /training/outputs/eval/shards/
 *.zip

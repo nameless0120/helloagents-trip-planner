@@ -72,6 +72,7 @@
 | `training/data/` | 训练和评测数据 | 冻结 eval 可提交；SFT/DPO/generated 大数据默认本地保留。 |
 | `training/docs/` | 后训练文档 | 教程、内部文档、读者版实验归档、本地资产索引。 |
 | `training/scripts/` | 后训练脚本 | 数据生成、审计、评测、serve、训练 launcher、rerank 工具。 |
+| `training/scripts/run_pipeline.py` | 后训练总入口 | 按阶段串联 SFT、票价候选、Best-of-N、DPO、评测、校验和训练。 |
 | `training/outputs/` | 模型和评测输出 | 大体积本地产物，默认忽略；轻量 reports 可选择性提交。 |
 | `training/archive/` | 历史归档 | 旧 pipeline、旧评测集和旧 prompt 实验，本地保留。 |
 | `training/post_training_artifacts/` | 旧版产物镜像 | 早期英文路径版归档；新主入口已迁到 `training/docs/后训练产物/`。 |

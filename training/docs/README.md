@@ -1,8 +1,8 @@
 # 训练文档索引
 
-更新时间：2026-05-22
+更新时间：2026-08-31
 
-这里是 `training/docs/` 的长期文档索引。当前主线入口优先看根目录的 [training/README.md](../README.md) 和结构约定 [training/STRUCTURE.md](../STRUCTURE.md)。
+这里是 `training/docs/` 的长期文档索引。当前主线入口优先看 [后训练总入口](../scripts/run_pipeline.py)、根目录的 [training/README.md](../README.md) 和结构约定 [training/STRUCTURE.md](../STRUCTURE.md)。
 
 ## 目录分工
 
@@ -22,6 +22,7 @@
 6. [内部文档/SFT阶段总结.md](内部文档/SFT阶段总结.md)
 7. [内部文档/规划上下文协议.md](内部文档/规划上下文协议.md)
 8. [内部文档/评测指标.md](内部文档/评测指标.md)
+9. [内部文档/DPO分块LogProb方案说明.md](内部文档/DPO分块LogProb方案说明.md)
 
 ## 不在这里维护的内容
 

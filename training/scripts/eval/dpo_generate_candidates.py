@@ -111,7 +111,7 @@ def call_strong_model(prompt_row: dict[str, Any], spec: CandidateSpec, args: arg
         "max_tokens": max_tokens,
         "stream": False,
     }
-    if llm.reasoning_effort:
+    if llm.enable_thinking and llm.reasoning_effort:
         kwargs["reasoning_effort"] = llm.reasoning_effort
     if llm.enable_thinking:
         kwargs["extra_body"] = {"thinking": {"type": "enabled"}}

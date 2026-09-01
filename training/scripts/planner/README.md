@@ -1,6 +1,6 @@
 # 当前脚本目录
 
-更新时间：2026-05-12
+更新时间：2026-08-31
 
 当前脚本按 `data/`、`eval/`、`audit/`、`pricing/`、`bestofn/`、`training/` 分组；目录生命周期规则见 `training/STRUCTURE.md`。旧脚本只作为参考，不再继续堆补丁。
 
@@ -40,13 +40,40 @@
 - `training/`：本地训练启动/恢复脚本。
 - `bestofn/`：多候选采样、规则 reward 选择和偏好/SFT 数据导出。
 
+## 推荐入口
+
+后训练流程统一从 `training/scripts/run_pipeline.py` 进入。当前 SFT 一条命令会完成生成、预算审计、可用性分类和 LLaMA-Factory 导出：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage sft \
+  --count 20 \
+  --request-source controlled \
+  --date-mode mixed \
+  --workers 1 \
+  --output-dir training/data/planner/sft_runs/260831_smoke
+```
+
+流程可以按下面理解：
+
+```text
+planner/data/generate_sft_data.py
+  -> planner/audit/audit_sft_budget_fit.py
+  -> planner/audit/classify_sft_budget_usability.py
+  -> planner/data/export_sft_budget_clean_subset.py
+  -> training/data/llamafactory/generated/<dataset>_train.json
+  -> validation/validate_trip_plan.py
+```
+
+生成前可以先把 `--stage` 改成 `sft-request` 或 `sft-context` 做检查。前者不调用外部服务，后者只查询高德和构建 PlannerContext，不调用 Planner 强模型。各个子脚本仍然可以单独运行，但主要用于定位某一步的问题。
+
 ## 已迁入脚本
 
 ### `data/generate_sft_data.py`
 
 生成 SFT 数据，默认使用受控真实分布，不再复用旧数据。
 
-先看请求分布，不调用高德和强模型：
+单独调试时，先看请求分布，不调用高德和强模型：
 
 ```bash
 .venv-training-py311/bin/python3 training/scripts/planner/data/generate_sft_data.py \
@@ -57,7 +84,7 @@
   --dry-run-summary
 ```
 
-只跑 PlannerContext smoke，不调用 Planner 强模型：
+单独调试时，只跑 PlannerContext smoke，不调用 Planner 强模型：
 
 ```bash
 .venv-training-py311/bin/python3 training/scripts/planner/data/generate_sft_data.py \
@@ -68,29 +95,17 @@
   --dry-run-context
 ```
 
-正式小批量造 SFT：
-
-```bash
-mkdir -p training/data/planner/sft_runs/260512_example
-
-nohup .venv-training-py311/bin/python3 -u training/scripts/planner/data/generate_sft_data.py \
-  --count 100 \
-  --start-index 0 \
-  --request-source controlled \
-  --date-mode mixed \
-  --workers 2 \
-  --resume \
-  --output-dir training/data/planner/sft_runs/260512_example \
-  > training/data/planner/sft_runs/260512_example/generate_sft.log 2>&1 &
-```
+正式小批量生成请使用上面的总入口。底层脚本单独运行只用于定位请求、上下文或
+teacher 生成的问题，正式数据仍要经过总入口里的审计、分类、导出和格式校验。
 
 输出：
 
 - `training/data/planner/sft_runs/<YYMMDD>_<run_slug>/requests.jsonl`
 - `training/data/planner/sft_runs/<YYMMDD>_<run_slug>/records.jsonl`
 - `training/data/planner/sft_runs/<YYMMDD>_<run_slug>/errors.jsonl`
-- `training/data/llamafactory/generated/trip_sft_train.json`
-- `training/data/llamafactory/generated/trip_sft_val.json`
+- `training/data/llamafactory/generated/<dataset>_train.json`
+- `training/data/llamafactory/generated/<dataset>_val.json`
+- `training/data/llamafactory/dataset_info.json`
 
 当前 SFT 写入前会硬校验：
 
@@ -106,29 +121,35 @@ nohup .venv-training-py311/bin/python3 -u training/scripts/planner/data/generate
 
 收集 PlannerContext 中出现过的景点候选，用于补本地票价表。这个脚本不调用 Planner 强模型。
 
-从已有 records 聚合：
+正式流程从已有 records 收集候选并分桶：
 
 ```bash
-.venv-training-py311/bin/python3 training/scripts/planner/pricing/collect_attraction_candidates.py \
-  --records training/data/planner/eval/records.jsonl
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage pricing \
+  --records training/data/planner/eval/records.jsonl \
+  --pricing-dir training/data/planner/attraction_prices/pipeline
 ```
 
-直接按受控分布查询 PlannerContext，只收集景点候选：
+直接按受控分布查询 PlannerContext，并完成候选分桶：
 
 ```bash
-.venv-training-py311/bin/python3 training/scripts/planner/pricing/collect_attraction_candidates.py \
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage pricing \
   --collect-context \
   --count 200 \
   --request-source controlled \
   --date-mode mixed \
-  --workers 1
+  --workers 1 \
+  --pricing-dir training/data/planner/attraction_prices/pipeline
 ```
+
+要继续用强模型估价，在命令中加 `--estimate-prices`。上面列出的三个 pricing 子脚本仍可单独运行，但只建议用于定位某一步。
 
 输出：
 
-- `training/data/planner/attraction_prices/generated/attraction_candidates.jsonl`
-- `training/data/planner/attraction_prices/reports/景点票价候选收集报告.md`
-- `training/data/planner/attraction_prices/snapshots/attraction_price_table_todo.json`
+- `training/data/planner/attraction_prices/pipeline/generated/attraction_candidates.jsonl`
+- `training/data/planner/attraction_prices/pipeline/reports/景点票价候选收集报告.md`
+- `training/data/planner/attraction_prices/pipeline/snapshots/attraction_price_table_todo.json`
 
 判断口径：
 
@@ -147,39 +168,52 @@ nohup .venv-training-py311/bin/python3 -u training/scripts/planner/data/generate
 
 输出：
 
-- `training/data/planner/attraction_prices/generated/request_count_ge5_bucketed_candidates.jsonl`
-- `training/data/planner/attraction_prices/reports/request_count_ge5_景点票价分桶审核.md`
-- `training/data/planner/attraction_prices/snapshots/request_count_ge5_price_table_review_draft.json`
+- `training/data/planner/attraction_prices/pipeline/generated/request_count_ge5_bucketed_candidates.jsonl`
+- `training/data/planner/attraction_prices/pipeline/reports/request_count_ge5_景点票价分桶审核.md`
+- `training/data/planner/attraction_prices/pipeline/snapshots/request_count_ge5_price_table_review_draft.json`
 
 ### `pricing/estimate_attraction_prices_with_llm.py`
 
 对 `request_count >= 5` 的高频景点统一调用强模型估算成人全价票价，并明确标记为 `llm_estimated`。这批价格只用于 SFT 的预算账本训练，不是官方票价或实时票价。
 
-先看 prompt，不调用强模型：
+只想检查估价 prompt，可以直接运行底层脚本的 `--dry-run-prompt`；正式估价建议从总入口调用：
 
 ```bash
 .venv-training-py311/bin/python3 training/scripts/planner/pricing/estimate_attraction_prices_with_llm.py \
+  --input training/data/planner/attraction_prices/pipeline/generated/request_count_ge5_bucketed_candidates.jsonl \
+  --output-dir training/data/planner/attraction_prices/pipeline \
   --min-request-count 5 \
   --batch-size 5 \
   --limit 5 \
   --dry-run-prompt
 ```
 
-正式估算：
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage pricing \
+  --records training/data/planner/eval/records.jsonl \
+  --pricing-dir training/data/planner/attraction_prices/pipeline \
+  --estimate-prices \
+  --resume
+```
+
+单独运行底层估算脚本时：
 
 ```bash
 nohup .venv-training-py311/bin/python3 -u training/scripts/planner/pricing/estimate_attraction_prices_with_llm.py \
+  --input training/data/planner/attraction_prices/pipeline/generated/request_count_ge5_bucketed_candidates.jsonl \
+  --output-dir training/data/planner/attraction_prices/pipeline \
   --min-request-count 5 \
   --batch-size 20 \
   --resume \
-  > training/data/planner/attraction_prices/generated/estimate_prices_llm.log 2>&1 &
+  > training/data/planner/attraction_prices/pipeline/generated/estimate_prices_llm.log 2>&1 &
 ```
 
 输出：
 
-- `training/data/planner/attraction_prices/generated/request_count_ge5_llm_price_estimates.jsonl`
-- `training/data/planner/attraction_prices/snapshots/request_count_ge5_attraction_price_table_llm_estimated.json`
-- `training/data/planner/attraction_prices/reports/景点票价强模型估算说明.md`
+- `training/data/planner/attraction_prices/pipeline/generated/request_count_ge5_llm_price_estimates.jsonl`
+- `training/data/planner/attraction_prices/pipeline/snapshots/request_count_ge5_attraction_price_table_llm_estimated.json`
+- `training/data/planner/attraction_prices/pipeline/reports/景点票价强模型估算说明.md`
 
 后续如果要用于线上 Planner，需要把估价表审核后合并到：
 
@@ -193,25 +227,28 @@ nohup .venv-training-py311/bin/python3 -u training/scripts/planner/pricing/estim
 先小批量 smoke：
 
 ```bash
-.venv-training-py311/bin/python3 training/scripts/planner/eval/build_eval_set.py \
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage eval-data \
   --count 10 \
   --start-index 0 \
   --request-source controlled \
   --date-mode mixed \
   --workers 2 \
-  --output-dir training/data/planner/eval_smoke
+  --eval-data-dir training/data/planner/eval_smoke
 ```
 
 正式构建评估集：
 
 ```bash
-.venv-training-py311/bin/python3 training/scripts/planner/eval/build_eval_set.py \
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage eval-data \
   --count 200 \
   --start-index 0 \
   --id-prefix standard200_eval \
   --request-source controlled \
   --date-mode mixed \
   --workers 4 \
+  --eval-data-dir training/data/planner/eval \
   --resume
 ```
 
@@ -220,7 +257,8 @@ nohup .venv-training-py311/bin/python3 -u training/scripts/planner/pricing/estim
 当前 hard eval 使用原 `harder` 压力分布构建，主路径统一命名为 `eval_hard`。
 
 ```bash
-.venv-training-py311/bin/python3 training/scripts/planner/eval/build_eval_set.py \
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage eval-data \
   --count 300 \
   --start-index 0 \
   --id-prefix harder_eval \
@@ -228,7 +266,7 @@ nohup .venv-training-py311/bin/python3 -u training/scripts/planner/pricing/estim
   --date-mode mixed \
   --difficulty harder \
   --workers 2 \
-  --output-dir training/data/planner/eval_hard \
+  --eval-data-dir training/data/planner/eval_hard \
   --resume
 ```
 
@@ -270,55 +308,52 @@ nohup .venv-training-py311/bin/python3 -u training/scripts/planner/pricing/estim
 baseline/SFT/DPO 评测必须使用同一份 rebuild 后的 records，避免新旧工具
 快照混在一次模型对比里。
 
-## DPO 起步
+## DPO 流程
 
-当前 DPO 定位为偏好训练，不用于修坏 JSON 或坏 schema。DPO prompt 池使用
-SFT 生成阶段留下的 records，但只取 request / PlannerContext /
-planner_query，不使用 teacher answer。
+当前 DPO 是在合法候选之间学习偏好，不负责修复坏 JSON 或坏 schema。输入来自
+SFT 或其他当前训练数据的 records，但 prompt 只保留 request、PlannerContext
+和 planner_query，不使用 teacher answer。
 
-先用当前最终 prompt 刷新 DPO prompt 来源：
-
-```bash
-.venv-training-py311/bin/python3 training/scripts/planner/eval/refresh_eval_prompts.py \
-  --input-records training/data/planner/sft_runs/<YYMMDD>_<run_slug>/records.jsonl \
-  --output-dir training/data/planner/dpo/prompt_source
-```
-
-构造 DPO prompts：
-
-```bash
-.venv-training-py311/bin/python3 training/scripts/eval/dpo_build_prompts.py \
-  --records training/data/planner/dpo/prompt_source/records.jsonl \
-  --output training/data/planner/dpo/prompts.jsonl \
-  --source prompt_source
-```
-
-第一版不使用 SFT 候选，先跑 4 路候选：
-
-- base_t02
-- base_t07
-- strong_t02
-- strong_t07
-
-20 条 smoke：
-
-```bash
-.venv-training-py311/bin/python3 training/scripts/eval/dpo_generate_candidates.py \
-  --prompts training/data/planner/dpo/prompts.jsonl \
-  --output training/data/planner/dpo/candidates_smoke20.jsonl \
-  --base-url http://127.0.0.1:4396/v1 \
-  --base-api-model trip-planner-base \
-  --no-sft-low \
-  --include-strong-low \
-  --include-strong-high \
-  --workers 4 \
-  --limit 20 \
-  --resume
-```
-
-后续 judge、pair 构造和 best-of-n 相关流程参考：
+当前主线可以按下面理解：
 
 ```text
-training/docs/内部文档/DPO分块LogProb方案说明.md
+当前 SFT records（只取 train，排除 frozen eval）
+  -> prepare_high_confidence_dpo_contexts.py
+     或 prepare_planner_soft_dpo_contexts.py
+  -> eval/dpo_build_prompts.py
+  -> eval/dpo_generate_candidates.py
+     （Base / SFT / Strong / MIMO 多候选，并做规则评估）
+  -> planner/bestofn/build_high_confidence_dpo_pairs.py
+     或 planner/build_planner_soft_*_dpo.py
+  -> chosen / rejected
+  -> LLaMA-Factory ranking JSON + dataset_info.json
+  -> configs/qwen25_7b/dpo_*.yaml
+  -> planner/training/*.sh
+```
+
+训练时要使用项目记录的 LLaMA-Factory 基础 commit 和本地补丁。推荐通过
+`training/scripts/run_pipeline.py --stage train` 启动，它会检查 checkout、补丁和源码路径；补丁内容和准备命令见
+`training/docs/内部文档/DPO分块LogProb方案说明.md`。旧的实验 shell 脚本保留了当时机器上的绝对路径，不作为新环境的默认入口。
+
+其中，pair 构造脚本会按 schema、生成是否完整、hard pass、planner soft、预算和
+餐饮等规则筛选 chosen/rejected。当前主线一般直接使用这些规则指标，不一定调用
+`eval/dpo_judge_candidates.py`。
+
+只想验证通用 DPO 工具链时，才使用下面这条 smoke 链：
+
+```text
+eval/dpo_build_prompts.py
+  -> eval/dpo_generate_candidates.py
+  -> eval/dpo_judge_candidates.py
+  -> eval/dpo_build_pairs.py
+  -> eval/dpo_audit_pairs.py
+```
+
+这组脚本的默认路径仍是 `training/data/legacy`。如果传入
+`training/data/planner/dpo`，需要自己显式指定输入、输出和 LLaMA-Factory 数据集名。
+Best-of-N 的通用 prompt、候选生成和选择说明见：
+
+```text
 training/scripts/planner/bestofn/README.md
+training/docs/内部文档/DPO分块LogProb方案说明.md
 ```

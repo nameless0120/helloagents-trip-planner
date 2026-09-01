@@ -1,8 +1,65 @@
 # Training Scripts Index
 
-更新时间：2026-05-12
+更新时间：2026-08-31
 
 这个目录只放当前还可能直接运行的训练、服务、校验入口。旧实验脚本默认作为本地参考或归档资产处理，不作为公开主线入口。
+
+## 统一入口
+
+`run_pipeline.py` 是后训练总入口。它按阶段调用下面的现有脚本，并在阶段之间传递明确的输入输出。最常用的 SFT 流程是：
+
+```text
+SFT 请求 smoke
+  -> PlannerContext smoke
+  -> SFT 生成
+  -> 预算审计
+  -> 可用性分类
+  -> 预算干净子集导出
+  -> TripPlan 格式校验
+  -> （可选）LLaMA-Factory
+```
+
+如果要让数据生成完成后自动接到训练，使用同一个入口并同时传 `--stage sft --stage train`：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage sft \
+  --stage train \
+  --count 20 \
+  --request-source controlled \
+  --date-mode mixed \
+  --workers 1 \
+  --sft-dir training/data/planner/sft_runs/260901_reader_smoke \
+  --config training/configs/qwen25_7b/sft_qwen25_7b_lora.yaml \
+  --llamafactory-root ../LLaMA-Factory
+```
+
+`run_pipeline.py` 会把本轮生成的 train/val 数据集名自动覆盖到训练命令中，并在启动训练前检查 `dataset_info.json` 和实际文件。`--dry-run` 只打印这些命令，不会调用子脚本、API 或 GPU。
+
+直接运行当前 SFT 数据链路：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage sft \
+  --count 20 \
+  --request-source controlled \
+  --date-mode mixed \
+  --workers 1 \
+  --output-dir training/data/planner/sft_runs/260831_smoke
+```
+
+只看总入口会执行哪些子命令：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage sft \
+  --output-dir /tmp/trip-planner-sft-smoke \
+  --dry-run
+```
+
+`--stage` 可以重复传入。可用阶段是 `sft-request`、`sft-context`、`sft`、`pricing`、`eval-data`、`bestofn`、`dpo`、`eval`、`validate` 和 `train`。需要 API、模型服务或 GPU 的阶段不会被默认执行；已有中间结果要继续使用时传 `--resume`。
+
+`train` 阶段会校验项目固定的 LLaMA-Factory 基础 commit 和补丁，并把指定 checkout 的 `src/` 放到 `PYTHONPATH`。准备方法见 `training/docs/内部文档/DPO分块LogProb方案说明.md`。
 
 ## 目录结构
 
@@ -17,12 +74,14 @@
 | `planner/audit/` | SFT 预算贴合度、上下文可达性和可用性审计 |
 | `planner/training/` | 本地训练启动/恢复脚本 |
 | `planner/bestofn/` | 多候选采样、规则 reward 选择和偏好/SFT 数据导出 |
+| `eval/` | 旧 SFT 链路、评测脚本和通用 DPO 辅助工具；不作为当前 SFT 主线入口 |
 | `archive/` | legacy helper 和实验脚本归档，公开仓库默认忽略 |
 
 ## 当前入口
 
 | Script | Purpose |
 | --- | --- |
+| `run_pipeline.py` | 统一调度 SFT、票价候选、Best-of-N、通用 DPO、评测和训练阶段 |
 | `planner/data/generate_sft_data.py` | SFT / realbudget 数据生成、request dry-run 和 PlannerContext smoke |
 | `planner/eval/build_eval_set.py` | 构建 standard / hard frozen eval 输入 |
 | `planner/eval/rebuild_eval_contexts.py` | 保留 request 与 record id，按当前后端重建 eval context |

@@ -4,7 +4,7 @@
 
 当前目标不是让模型凭空知道更多旅行事实，而是让后端先把事实和约束编译成结构化 `PlannerContext`，再让 Planner 模型稳定生成符合业务协议的 `TripPlan JSON`。
 
-更新时间：2026-05-22。文件结构和生命周期规则见 [STRUCTURE.md](STRUCTURE.md)，长期文档索引见 [docs/README.md](docs/README.md)，本机完整后训练资产地图见 [docs/后训练产物/本地资产索引.md](docs/后训练产物/本地资产索引.md)。
+更新时间：2026-08-31。文件结构和生命周期规则见 [STRUCTURE.md](STRUCTURE.md)，长期文档索引见 [docs/README.md](docs/README.md)，本机完整后训练资产地图见 [docs/后训练产物/本地资产索引.md](docs/后训练产物/本地资产索引.md)。
 
 ## 分工
 
@@ -39,10 +39,12 @@ training/
 ├── data/
 │   ├── llamafactory/     # LLaMA-Factory 数据入口
 │   └── planner/               # 当前训练、评估和票价数据
+├── patches/              # 第三方训练依赖补丁
 ├── docs/                 # 教程、内部协议、指标、预算报告和 DPO 计划
 ├── outputs/eval/         # 轻量评测报告、comparison 和 manifest
 ├── prompts/              # 数据生成 prompt
 ├── scripts/
+│   ├── run_pipeline.py    # 后训练总入口
 │   ├── shared/           # 公共 helper 和 LLM 客户端
 │   ├── serving/          # 本地 Planner 模型服务
 │   ├── validation/       # TripPlan schema 校验
@@ -88,6 +90,8 @@ DATA_GEN_REASONING_EFFORT=low
 DATA_GEN_THINKING=false
 ```
 
+新数据生成默认关闭 thinking。`DATA_GEN_THINKING=false` 时不会向模型发送 `reasoning_effort` 或 `thinking` 参数，模型可以直接生成 TripPlan JSON。需要开启思考时再显式设置 `DATA_GEN_THINKING=true`。
+
 安装依赖：
 
 ```bash
@@ -97,7 +101,121 @@ source .venv-training-py311/bin/activate
 pip install -r training/requirements-training.txt
 ```
 
+其中 PyTorch、torchvision 和 torchaudio 要使用与机器 CUDA 相匹配的一组版本；已有可用的 CUDA PyTorch 环境时，不要为了重装训练栈替换它。
+
 如果本地已经有可用训练环境，可以把下面命令里的 `.venv-training-py311/bin/python3` 换成对应解释器。
+
+训练使用的 LLaMA-Factory 不是任意安装版本。项目记录了基础 commit 和本地补丁，准备方法、环境变量和版本检查见 [LLaMA-Factory 本地改动说明](docs/内部文档/DPO分块LogProb方案说明.md)。统一入口的 `train` 阶段默认查找主项目同级的 `../LLaMA-Factory`，也可以通过 `--llamafactory-root` 或 `LLAMAFACTORY_ROOT` 指定。
+
+## 一个脚本跑当前流程
+
+总入口是 `training/scripts/run_pipeline.py`。它只调度已有后训练脚本，不复制数据生成和评测逻辑；每个阶段单独保留输出目录，失败时会停在具体步骤。Backend、Frontend 和常驻模型服务仍按各自文档启动。
+
+```text
+请求分布 smoke
+  -> PlannerContext smoke
+  -> SFT 数据
+  -> 预算审计
+  -> 可用性分类
+  -> 导出预算干净子集
+  -> TripPlan 格式校验
+  -> （可选）LLaMA-Factory 训练
+```
+
+先看请求分布，不调用高德或强模型：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage sft-request \
+  --count 20 \
+  --request-source controlled \
+  --date-mode mixed
+```
+
+再检查 PlannerContext 候选池。这个阶段会调用高德，但不会调用 Planner 强模型，也不会写训练 records：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage sft-context \
+  --count 20 \
+  --request-source controlled \
+  --date-mode mixed \
+  --workers 1
+```
+
+确认分布和上下文都没问题后，用同一个入口完成 SFT 生成、审计、分类和导出：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage sft \
+  --count 20 \
+  --request-source controlled \
+  --date-mode mixed \
+  --workers 1 \
+  --output-dir training/data/planner/sft_runs/260831_smoke
+```
+
+这个命令会依次调用：
+
+```text
+planner/data/generate_sft_data.py
+  -> planner/audit/audit_sft_budget_fit.py
+  -> planner/audit/classify_sft_budget_usability.py
+  -> planner/data/export_sft_budget_clean_subset.py
+  -> validation/validate_trip_plan.py
+```
+
+输出主要在 `training/data/planner/sft_runs/260831_smoke/`：
+
+- `records.jsonl`、`errors.jsonl`：原始成功记录和失败记录。
+- `audit_budget/`：预算贴合审计。
+- `classification/`：样本可用性分类。
+- `export_budget_clean/`：导出的审计子集和说明。
+- `llm_usage.jsonl`：强模型调用的 usage 记录（服务返回时才有内容）。
+- `pipeline_manifest.json`：本次总入口的参数记录。
+
+导出的 LLaMA-Factory 文件在 `training/data/llamafactory/generated/`，并会更新 `dataset_info.json`。已有 run 需要接着跑时显式加 `--resume`；不加时如果目录已有 records，脚本会停止，避免把两个实验混在一起。
+
+如果希望从生成数据直接接到 SFT 训练，可以只执行下面这一条命令：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage sft \
+  --stage train \
+  --count 20 \
+  --request-source controlled \
+  --date-mode mixed \
+  --workers 1 \
+  --sft-dir training/data/planner/sft_runs/260901_reader_smoke \
+  --config training/configs/qwen25_7b/sft_qwen25_7b_lora.yaml \
+  --llamafactory-root ../LLaMA-Factory
+```
+
+入口会按本轮 `--sft-dir` 自动生成数据集名，检查 `dataset_info.json` 和 train/val 文件，再把 `dataset`、`eval_dataset`、`dataset_dir` 和独立的 `output_dir` 传给 LLaMA-Factory，同时为 DeepSpeed 自动设置 `FORCE_TORCHRUN=1`。读者不需要手动改训练 YAML 或复制数据文件。这个命令会调用高德和数据生成模型，并在最后启动 GPU 训练；只想确认命令时，在末尾加 `--dry-run`。
+
+总入口还提供 `pricing`、`eval-data`、`bestofn`、`dpo`、`eval`、`validate` 和 `train` 阶段。可以重复传 `--stage`，例如：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage sft \
+  --stage dpo \
+  --sft-dir training/data/planner/sft_runs/260831_smoke \
+  --dpo-dir training/data/planner/dpo/260831_smoke
+```
+
+`dpo`、`eval` 和 `train` 需要本地模型服务、强模型配置或 GPU 训练环境，必须按参数显式开启。`train` 使用本轮数据时会自动覆盖配置中的数据集参数；如果训练已有数据，可以只传 `--stage train`，但配置里的数据集必须已经登记在 `training/data/llamafactory/dataset_info.json` 中。只想查看将要执行的子命令时，加 `--dry-run`。
+
+各阶段的作用如下：
+
+| 阶段 | 作用 | 需要的输入或服务 |
+| --- | --- | --- |
+| `pricing` | 收集景点候选并分桶，可选强模型估价 | `--records` 或 `--collect-context` |
+| `eval-data` | 构建冻结评估集 | 高德 API |
+| `bestofn` | 多温度候选、规则选择和 SFT/DPO 导出 | Planner 模型服务和 `--records` |
+| `dpo` | prompt、多候选、judge、pair 和审计 | Base/SFT 服务、强模型配置和 `--records` |
+| `eval` | 单模型生成、规则评测和可选 judge | `--records`、`--model-name`、`--api-model` |
+| `validate` | 校验已有 SFT、DPO 或 Eval GT 文件 | `--validate-sft` 等文件参数 |
+| `train` | 使用项目固定补丁调用 LLaMA-Factory 训练 | `--config`、`--llamafactory-root` 和训练环境 |
 
 ## SFT 数据状态
 
@@ -117,26 +235,25 @@ smoke 20 -> 审计 -> 100 条 -> 审计 -> 1000 条 -> 导出 LLaMAFactory
 
 ## 数据构建脚本
 
-请求和上下文构建脚本仍保留，用于后续 realbudget pipeline。先 dry-run 请求分布，不调用高德或强模型：
+请求和上下文构建脚本仍保留，但推荐从总入口调用。先 dry-run 请求分布，不调用高德或强模型：
 
 ```bash
-.venv-training-py311/bin/python3 training/scripts/planner/data/generate_sft_data.py \
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage sft-request \
   --count 100 \
   --request-source controlled \
-  --date-mode mixed \
-  --dry-run-requests \
-  --dry-run-summary
+  --date-mode mixed
 ```
 
 只构建 `PlannerContext` smoke，不调用 Planner 强模型：
 
 ```bash
-.venv-training-py311/bin/python3 training/scripts/planner/data/generate_sft_data.py \
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage sft-context \
   --count 20 \
   --request-source controlled \
   --date-mode mixed \
-  --workers 1 \
-  --dry-run-context
+  --workers 1
 ```
 
 写入训练集前必须做硬校验，包括人数、预算结构、酒店住宿晚数、酒店价格复制、景点票价复制、门票按人数汇总、住宿预算覆盖晚数和预算分项加总。
@@ -145,37 +262,36 @@ smoke 20 -> 审计 -> 100 条 -> 审计 -> 1000 条 -> 导出 LLaMAFactory
 
 高德 POI 不一定给出景点票价。当前流程会把高频候选景点收集出来，形成本地票价表候选，用于预算账本训练。
 
-从已有 records 聚合候选：
+从已有 records 收集候选并分桶：
 
 ```bash
-.venv-training-py311/bin/python3 training/scripts/planner/pricing/collect_attraction_candidates.py \
-  --records training/data/planner/eval/records.jsonl
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage pricing \
+  --records training/data/planner/eval/records.jsonl \
+  --pricing-dir training/data/planner/attraction_prices/pipeline
 ```
 
-按请求分布直接收集候选：
+按受控请求分布直接收集、分桶：
 
 ```bash
-.venv-training-py311/bin/python3 training/scripts/planner/pricing/collect_attraction_candidates.py \
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage pricing \
   --collect-context \
   --count 200 \
   --request-source controlled \
   --date-mode mixed \
-  --workers 1
+  --workers 1 \
+  --pricing-dir training/data/planner/attraction_prices/pipeline
 ```
 
-对高频候选分桶：
+如果要在同一轮继续调用强模型估算票价，在上面的命令中加 `--estimate-prices`：
 
 ```bash
-.venv-training-py311/bin/python3 training/scripts/planner/pricing/bucket_attraction_price_candidates.py \
-  --min-request-count 5
-```
-
-对高频景点调用强模型估算票价：
-
-```bash
-.venv-training-py311/bin/python3 training/scripts/planner/pricing/estimate_attraction_prices_with_llm.py \
-  --min-request-count 5 \
-  --batch-size 20 \
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage pricing \
+  --records training/data/planner/eval/records.jsonl \
+  --pricing-dir training/data/planner/attraction_prices/pipeline \
+  --estimate-prices \
   --resume
 ```
 
@@ -186,13 +302,15 @@ smoke 20 -> 审计 -> 100 条 -> 审计 -> 1000 条 -> 导出 LLaMAFactory
 构建 standard eval：
 
 ```bash
-.venv-training-py311/bin/python3 training/scripts/planner/eval/build_eval_set.py \
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage eval-data \
   --count 200 \
   --start-index 0 \
   --id-prefix standard200_eval \
   --request-source controlled \
   --date-mode mixed \
   --workers 4 \
+  --eval-data-dir training/data/planner/eval \
   --resume
 ```
 
@@ -201,7 +319,8 @@ smoke 20 -> 审计 -> 100 条 -> 审计 -> 1000 条 -> 导出 LLaMAFactory
 当前 hard eval 使用原 `harder` 压力分布构建，主路径统一命名为 `eval_hard`。
 
 ```bash
-.venv-training-py311/bin/python3 training/scripts/planner/eval/build_eval_set.py \
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage eval-data \
   --count 300 \
   --start-index 0 \
   --id-prefix harder_eval \
@@ -209,7 +328,7 @@ smoke 20 -> 审计 -> 100 条 -> 审计 -> 1000 条 -> 导出 LLaMAFactory
   --date-mode mixed \
   --difficulty harder \
   --workers 2 \
-  --output-dir training/data/planner/eval_hard \
+  --eval-data-dir training/data/planner/eval_hard \
   --resume
 ```
 

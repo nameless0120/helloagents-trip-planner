@@ -1,8 +1,53 @@
-# Legacy Data Scripts
+# 兼容、评测与通用 DPO 脚本
 
-这里放第二版后训练数据脚本。legacy 的原则是：只合成用户请求，后面的工具快照、PlannerContext、Planner 输入都走当前线上后端协议。当前线上工具召回已经改成“城市经典候选 + 用户偏好候选”的组合，避免只按偏好关键词搜索时漏掉当地经典景点。
+这里同时保留旧 SFT 数据链路、评测脚本和通用 DPO 辅助脚本。它们不是一条默认串起来的流程，先按下面的入口区分：
 
-> 注意：本目录是 legacy 数据链路。`generate_sft_data.py` 仅用于旧版 SFT/DPO/eval 流程复现，不是当前 SFT 主线入口。新数据请使用 [`planner/data/generate_sft_data.py`](../planner/data/generate_sft_data.py)；两个脚本用途不同，不保持代码同步。
+如果要从头跑当前后训练流程，使用上一级的统一入口：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage sft \
+  --count 20 \
+  --request-source controlled \
+  --date-mode mixed \
+  --workers 1 \
+  --output-dir training/data/planner/sft_runs/260831_smoke
+```
+
+它会把当前 SFT 的生成、预算审计、分类和导出串起来。下面的脚本保留为兼容入口、单步调试工具，以及通用 DPO/评测组件。
+
+当前 SFT：
+
+```text
+planner/data/generate_sft_data.py
+  -> planner/audit/audit_sft_budget_fit.py
+  -> planner/audit/classify_sft_budget_usability.py
+  -> planner/data/export_sft_budget_clean_subset.py
+  -> validation/validate_trip_plan.py
+  -> LLaMA-Factory SFT
+```
+
+当前 DPO 主线：
+
+```text
+planner/bestofn/prepare_*_dpo_contexts.py
+  -> eval/dpo_build_prompts.py
+  -> eval/dpo_generate_candidates.py
+  -> planner/build_*_dpo.py 或 planner/bestofn/build_*_dpo_pairs.py
+  -> LLaMA-Factory DPO 数据
+  -> configs/qwen25_7b/dpo_*.yaml + planner/training/*.sh
+```
+
+旧 SFT：
+
+```text
+eval/generate_sft_data.py
+  -> eval/filter_sft_data.py
+  -> eval/split_sft_data.py
+  -> legacy SFT train / val / eval
+```
+
+`eval/generate_sft_data.py` 只属于旧 SFT 链路。旧版本的 `controlled` 请求没有补齐当前 `TripRequest` 必填的 `party` 和 `budget_constraint`，所以会在 schema 校验处失败；现在脚本已经补上兼容字段，但它仍然只会生成 legacy 目录和 legacy 数据集。新数据不要再接旧的 filter 和 split，直接从 [`planner/data/generate_sft_data.py`](../planner/data/generate_sft_data.py) 开始，或使用上一级的 `run_pipeline.py`。
 
 ## Scripts
 
@@ -18,8 +63,8 @@
 | `eval_slice_report.py` | 按 `control_spec`、天气来源、天数等切片汇总评估结果 |
 | `eval_pipeline.py` | 单模型评估入口：generate -> rule -> 可选 judge |
 | `historical_weather.py` | 训练数据专用历史天气：用常用旅游城市坐标表调用 Open-Meteo Archive，并转换成 `trip_weather` 协议 |
-| `dpo_build_prompts.py` | 从 legacy train/val records 构造 DPO prompt 池，不使用冻结 eval |
-| `dpo_generate_candidates.py` | 对每个 DPO prompt 生成 Base/SFT/Strong 多候选，并复用规则评估 |
+| `dpo_build_prompts.py` | 通用 DPO prompt 构造工具，默认读取 legacy records；传入当前路径时也可用于当前 DPO smoke |
+| `dpo_generate_candidates.py` | 通用多候选生成工具，支持 Base/SFT/Strong，并复用规则评估；默认输出仍是 legacy 路径 |
 | `dpo_view_candidates.py` | 把 DPO candidates JSONL 渲染成终端/Markdown 预览，方便人工看同 prompt 多候选差异 |
 | `dpo_judge_candidates.py` | 对通过硬过滤的候选做强模型 judge 多维评分 |
 | `dpo_build_pairs.py` | 根据 judge 分数和阈值构造 chosen/rejected pair，并导出 LLaMA-Factory DPO 数据 |
@@ -215,9 +260,30 @@ PlannerContext 的高德 HTTP 入口默认启用本地缓存和进程内限速�
 
 缓存命中后不会请求高德，适合大规模造数时重复城市、重复关键词、重复酒店类型的场景。正在运行的生成进程不会热更新代码；修改缓存逻辑后，需要重启生成脚本才会生效。
 
-## DPO Data Smoke
+## 通用 DPO Data Smoke
 
-DPO 阶段不再使用“手工改坏字段”的偏好对，而是用多模型自然候选 + 规则过滤 + LLM judge 构造 chosen/rejected。当前公开说明见：
+下面是本目录提供的通用 DPO smoke 链路。默认路径和数据集名称仍是 legacy；如果传入 `training/data/planner/dpo` 下的当前数据，就要同时显式传入输入、输出和数据集名称。当前主线的 pair 构造还包括 `planner/build_*_dpo.py` 和 `planner/bestofn/build_*_dpo_pairs.py`，不能只看下面这组默认命令。
+
+DPO 不用于修坏 JSON 或坏 schema。通用链路使用多模型自然候选、规则过滤和可选的 LLM judge 构造 chosen/rejected：
+
+```text
+dpo_build_prompts.py
+  -> dpo_generate_candidates.py
+  -> dpo_judge_candidates.py
+  -> dpo_build_pairs.py
+  -> dpo_audit_pairs.py
+```
+
+要跑这条通用链路，可以直接使用总入口：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage dpo \
+  --records training/data/planner/sft_runs/<YYMMDD>_<run_slug>/records.jsonl \
+  --output-dir training/data/planner/dpo/<YYMMDD>_<run_slug>
+```
+
+当前主线通常直接用候选规则指标筛选 pair，不一定调用 `dpo_judge_candidates.py`。当前公开说明见：
 
 ```text
 training/docs/内部文档/DPO分块LogProb方案说明.md

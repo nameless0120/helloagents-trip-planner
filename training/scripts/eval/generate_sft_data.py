@@ -307,9 +307,57 @@ def planner_max_output_tokens(request: TripRequest, args: argparse.Namespace) ->
     return min(args.output_base_tokens + request.travel_days * args.output_tokens_per_day, args.output_tokens_cap)
 
 
+def build_legacy_party_info(rng: random.Random, companion_type: str) -> dict[str, Any]:
+    """为 legacy 请求补齐当前 TripRequest 要求的同行人数结构。"""
+    if companion_type == "solo":
+        adults, children, elders = 1, 0, 0
+    elif companion_type == "couple":
+        adults, children, elders = 2, 0, 0
+    elif companion_type == "friends":
+        adults, children, elders = rng.choice([2, 3, 4]), 0, 0
+    elif companion_type == "family_child":
+        adults, children, elders = 2, rng.choice([1, 1, 2]), 0
+    elif companion_type == "family_elder":
+        adults, children, elders = rng.choice([1, 2]), 0, rng.choice([1, 2])
+    else:
+        adults, children, elders = rng.choice([1, 2, 3]), 0, 0
+    return {
+        "adults": adults,
+        "children": children,
+        "elders": elders,
+        "total": adults + children + elders,
+        "companion_type": companion_type,
+    }
+
+
+def choose_legacy_budget_amount(
+    rng: random.Random,
+    budget_level: str,
+    party_total: int,
+    travel_days: int,
+) -> int:
+    """按 legacy 预算档位生成整趟总预算，供旧请求兼容当前 schema。"""
+    per_person_day = rng.choice(PER_PERSON_DAY_BUDGETS.get(budget_level, PER_PERSON_DAY_BUDGETS["medium"]))
+    return per_person_day * max(party_total, 1) * max(travel_days, 1)
+
+
+def build_legacy_budget_constraint(
+    budget_level: str,
+    amount: int,
+) -> dict[str, Any]:
+    return {
+        "amount": amount,
+        "scope": "total",
+        "currency": "CNY",
+        "budget_level": budget_level,
+        "strictness": "soft",
+    }
+
+
 def normalize_request(data: dict[str, Any], request_id: str) -> TripRequest:
     """把 LLM/模板生成的请求规范成 TripRequest。"""
     item = dict(data)
+    control_spec = dict(item.get("control_spec") or {})
     item["city"] = str(item.get("city") or "").strip()
     item["transportation"] = str(item.get("transportation") or "公共交通").strip()
     item["accommodation"] = str(item.get("accommodation") or "经济型酒店").strip()
@@ -324,6 +372,17 @@ def normalize_request(data: dict[str, Any], request_id: str) -> TripRequest:
         item["start_date"] = (date.today() + timedelta(days=14)).isoformat()
     start_date = date.fromisoformat(str(item["start_date"]))
     item["end_date"] = (start_date + timedelta(days=travel_days - 1)).isoformat()
+
+    companion_type = str(control_spec.get("companion_type") or "unspecified")
+    rng = random.Random(sum(ord(ch) for ch in request_id))
+    if not item.get("party"):
+        item["party"] = build_legacy_party_info(rng, companion_type)
+    budget_level = str(control_spec.get("budget_level") or "medium")
+    if budget_level not in PER_PERSON_DAY_BUDGETS:
+        budget_level = "medium"
+    if not item.get("budget_constraint"):
+        amount = choose_legacy_budget_amount(rng, budget_level, int(item["party"].get("total") or 1), travel_days)
+        item["budget_constraint"] = build_legacy_budget_constraint(budget_level, amount)
 
     request = TripRequest(**item)
     # request_id 不属于后端 schema，放在 metadata 里；这里仅用于错误提示。
@@ -441,18 +500,18 @@ def choose_controlled_transportation(rng: random.Random, companion_type: str, ci
     return weighted_choice(rng, weights)
 
 
-def choose_budget_text(rng: random.Random, budget_level: str, companion_type: str, travel_days: int) -> str:
+def choose_budget_text(
+    rng: random.Random,
+    budget_level: str,
+    companion_type: str,
+    travel_days: int,
+    party_total: int | None = None,
+    budget_amount: int | None = None,
+) -> str:
     """生成自然语言预算描述。"""
-    people = {
-        "solo": 1,
-        "couple": 2,
-        "friends": rng.choice([2, 3, 4]),
-        "family_child": rng.choice([3, 4]),
-        "family_elder": rng.choice([2, 3, 4]),
-        "unspecified": rng.choice([1, 2, 3]),
-    }[companion_type]
-    per_person_day = rng.choice(PER_PERSON_DAY_BUDGETS[budget_level])
-    total = per_person_day * people * travel_days
+    if party_total is None:
+        party_total = build_legacy_party_info(rng, companion_type)["total"]
+    total = budget_amount or choose_legacy_budget_amount(rng, budget_level, party_total, travel_days)
     # legacy DPO 阶段先统一训练“总预算”语义，避免人均/每日/总额混在一起。
     return f"总预算控制在{total}元左右"
 
@@ -481,11 +540,13 @@ def build_controlled_free_text(
     diet: str,
     pace: str,
     avoid: list[str],
+    party_total: int | None = None,
+    budget_amount: int | None = None,
 ) -> str:
     """不用强模型，直接生成足够自然的请求补充。"""
     parts = [
         companion_phrase(rng, companion_type),
-        choose_budget_text(rng, budget_level, companion_type, travel_days),
+        choose_budget_text(rng, budget_level, companion_type, travel_days, party_total, budget_amount),
     ]
     if pace == "慢节奏":
         parts.append("希望节奏慢一点，不要每天赶太多景点")
@@ -523,6 +584,8 @@ def generate_controlled_request(index: int, args: argparse.Namespace) -> dict[st
     accommodation = choose_controlled_accommodation(rng, companion_type, budget_level)
     transportation = choose_controlled_transportation(rng, companion_type, city)
     start = choose_controlled_start_date(rng, travel_days, args.date_mode)
+    party = build_legacy_party_info(rng, companion_type)
+    budget_amount = choose_legacy_budget_amount(rng, budget_level, party["total"], travel_days)
 
     themes = sample_many_weighted(rng, THEME_POOL, 2, 4)
     if companion_type == "family_child" and "亲子" not in themes:
@@ -534,7 +597,17 @@ def generate_controlled_request(index: int, args: argparse.Namespace) -> dict[st
 
     avoid_pool = ["人挤人的网红店", "过度商业化景点", "太累的路线", "太偏远的景点", "高价餐厅", "购物团"]
     avoid = rng.sample(avoid_pool, k=rng.choice([1, 1, 2, 2, 3])) if rng.random() < 0.68 else []
-    free_text = build_controlled_free_text(rng, companion_type, budget_level, travel_days, diet, pace, avoid)
+    free_text = build_controlled_free_text(
+        rng,
+        companion_type,
+        budget_level,
+        travel_days,
+        diet,
+        pace,
+        avoid,
+        party_total=party["total"],
+        budget_amount=budget_amount,
+    )
 
     return {
         "request_id": f"legacy_request_{index:06d}",
@@ -546,6 +619,8 @@ def generate_controlled_request(index: int, args: argparse.Namespace) -> dict[st
         "accommodation": accommodation,
         "preferences": themes[:4],
         "free_text_input": free_text,
+        "party": party,
+        "budget_constraint": build_legacy_budget_constraint(budget_level, budget_amount),
         "source": "controlled",
         "control_spec": {
             "companion_type": companion_type,

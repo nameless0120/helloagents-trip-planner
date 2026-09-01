@@ -75,7 +75,9 @@ class DataGenLLM:
             model = model_override or os.getenv("DATA_GEN_MODEL") or os.getenv("DEEPSEEK_MODEL") or "deepseek-v4-pro"
             timeout = float(os.getenv("DATA_GEN_TIMEOUT") or os.getenv("DEEPSEEK_TIMEOUT") or "660")
             reasoning_effort = os.getenv("DATA_GEN_REASONING_EFFORT") or os.getenv("DEEPSEEK_REASONING_EFFORT") or "high"
-            enable_thinking = DataGenLLM._env_truthy("DATA_GEN_THINKING", DataGenLLM._env_truthy("DEEPSEEK_THINKING", True))
+            enable_thinking = DataGenLLM._env_truthy("DATA_GEN_THINKING", DataGenLLM._env_truthy("DEEPSEEK_THINKING", False))
+            if not enable_thinking:
+                reasoning_effort = None
             return api_key, base_url, model, timeout, reasoning_effort, enable_thinking
 
         if provider == "deepseek":
@@ -84,7 +86,9 @@ class DataGenLLM:
             model = model_override or os.getenv("DATA_GEN_MODEL") or os.getenv("DEEPSEEK_MODEL") or "deepseek-v4-pro"
             timeout = float(os.getenv("DATA_GEN_TIMEOUT") or os.getenv("DEEPSEEK_TIMEOUT") or "660")
             reasoning_effort = os.getenv("DATA_GEN_REASONING_EFFORT") or os.getenv("DEEPSEEK_REASONING_EFFORT") or "high"
-            enable_thinking = DataGenLLM._env_truthy("DATA_GEN_THINKING", DataGenLLM._env_truthy("DEEPSEEK_THINKING", True))
+            enable_thinking = DataGenLLM._env_truthy("DATA_GEN_THINKING", DataGenLLM._env_truthy("DEEPSEEK_THINKING", False))
+            if not enable_thinking:
+                reasoning_effort = None
             return api_key, base_url, model, timeout, reasoning_effort, enable_thinking
 
         if provider == "mimo":
@@ -94,6 +98,8 @@ class DataGenLLM:
             timeout = float(os.getenv("MIMO_TIMEOUT") or os.getenv("DATA_GEN_TIMEOUT") or "660")
             reasoning_effort = os.getenv("MIMO_REASONING_EFFORT") or None
             enable_thinking = DataGenLLM._env_truthy("MIMO_THINKING", False)
+            if not enable_thinking:
+                reasoning_effort = None
             return api_key, base_url, model, timeout, reasoning_effort, enable_thinking
 
         raise ValueError(f"不支持的数据生成模型 provider: {provider}")
@@ -118,9 +124,9 @@ class DataGenLLM:
             "max_tokens": max_tokens,
             "stream": False,
         }
-        if self.reasoning_effort:
-            kwargs["reasoning_effort"] = self.reasoning_effort
         if self.enable_thinking:
+            if self.reasoning_effort:
+                kwargs["reasoning_effort"] = self.reasoning_effort
             kwargs["extra_body"] = {"thinking": {"type": "enabled"}}
 
         response = self.client.chat.completions.create(**kwargs)

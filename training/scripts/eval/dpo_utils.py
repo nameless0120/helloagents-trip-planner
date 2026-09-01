@@ -256,9 +256,17 @@ def update_dataset_info(
             "rejected": "rejected",
         },
     }
-    data[train_dataset_name] = {"file_name": train_path.name, **entry}
-    data[val_dataset_name] = {"file_name": val_path.name, **entry}
+    data[train_dataset_name] = {"file_name": llamafactory_file_name(train_path), **entry}
+    data[val_dataset_name] = {"file_name": llamafactory_file_name(val_path), **entry}
     write_json(DATASET_INFO_PATH, data)
+
+
+def llamafactory_file_name(path: Path) -> str:
+    """返回相对于 LLaMA-Factory 数据目录的文件名。"""
+    try:
+        return path.resolve().relative_to(LLAMAFACTORY_DIR.resolve()).as_posix()
+    except ValueError:
+        return path.name
 
 
 def split_pairs(pairs: list[dict[str, Any]], val_ratio: float, seed: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:

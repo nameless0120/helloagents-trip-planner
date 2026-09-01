@@ -168,6 +168,8 @@ npm run dev -- --host 0.0.0.0 --port 5173
 
 推荐入口：
 
+- [CHANGELOG.md](CHANGELOG.md)：版本变更记录和贡献者致谢
+- [training/scripts/run_pipeline.py](training/scripts/run_pipeline.py)：统一调度数据生成、审计、DPO、评测和训练阶段
 - [training/docs/教程/旅行助手后训练实战教程.md](training/docs/教程/旅行助手后训练实战教程.md)：从 PlannerContext 到 SFT、Best-of-N 和评测的实战教程
 - [training/README.md](training/README.md)：后训练目录说明
 - [training/STRUCTURE.md](training/STRUCTURE.md)：训练资产、数据、脚本、报告的目录边界

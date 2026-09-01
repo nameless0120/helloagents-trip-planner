@@ -1,5 +1,8 @@
 """生成 SFT 数据。
 
+对外推荐从 `training/scripts/run_pipeline.py --stage sft` 进入。这个脚本是总入口
+调用的 SFT 生成阶段，单独运行主要用于调试请求、上下文和生成本身。
+
 示例:
 
 1. 先 dry-run 看受控请求分布，不调用高德和强模型:
@@ -36,8 +39,8 @@
 
 - <output-dir>/records.jsonl: 完整可审计记录，包含 request、PlannerContext、prompt 和 TripPlan。
 - <output-dir>/errors.jsonl: 失败样本，不进入训练集。
-- training/data/llamafactory/generated/trip_sft_train.json
-- training/data/llamafactory/generated/trip_sft_val.json
+- 提供 `--output-dir` 时，LLaMA-Factory 临时导出写在 `<output-dir>/llamafactory_train.json` 和 `<output-dir>/llamafactory_val.json`；统一入口会在审计、分类后生成最终带 run 名称的 train/val 文件。
+- 不提供 `--output-dir` 时，才会写入 `training/data/llamafactory/generated/trip_sft_train.json` 和 `trip_sft_val.json`。
 """
 
 from __future__ import annotations
@@ -61,9 +64,11 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 SCRIPTS_DIR = PROJECT_ROOT / "training" / "scripts"
 LEGACY_SCRIPTS_DIR = SCRIPTS_DIR / "legacy"
+EVAL_SCRIPTS_DIR = SCRIPTS_DIR / "eval"
 BACKEND_DIR = PROJECT_ROOT / "backend"
 sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(LEGACY_SCRIPTS_DIR))
+sys.path.insert(0, str(EVAL_SCRIPTS_DIR))
 sys.path.insert(0, str(BACKEND_DIR))
 
 from shared.common import DATA_DIR, LLAMAFACTORY_DIR, load_project_env, read_jsonl, split_train_val, write_json
