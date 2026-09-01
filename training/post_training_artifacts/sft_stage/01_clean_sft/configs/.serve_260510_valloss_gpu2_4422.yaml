@@ -1,9 +1,0 @@
-model_name_or_path: Qwen/Qwen2.5-7B-Instruct
-adapter_name_or_path: training/outputs/qwen25_7b/sft_v3_260509_main_clean_cp2_v2b_r32_b32_lr6e5_ctx24576_valloss_20260510
-template: qwen
-infer_backend: vllm
-infer_dtype: bfloat16
-trust_remote_code: true
-vllm_maxlen: 32768
-vllm_gpu_util: 0.85
-vllm_max_lora_rank: 32

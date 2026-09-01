@@ -1,4 +1,4 @@
-# OS and editor noise
+# OS, editor and local environment
 .DS_Store
 Thumbs.db
 *.swp
@@ -7,8 +7,6 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
-
-# Local secrets and environment overrides
 .env
 .env.*
 !.env.example
@@ -16,24 +14,13 @@ Thumbs.db
 .envrc
 *.local
 
-# Logs and runtime state
+# Logs, caches and Python/Node environments
 logs/
 *.log
 *.pid
 nohup.out
-
-# Private notes and communication drafts
-/training/private-docs/*
-/training/docs/*_tmp.html
-/training/docs/*.tmp.html
-/training/archive/*
-!/training/archive/2026-05-03_attraction_price_seed/
-!/training/archive/2026-05-03_attraction_price_seed/attraction_price_table_seed.json
-
-# Python caches, build outputs, and virtual environments
 __pycache__/
 *.py[cod]
-*$py.class
 *.so
 .Python
 .pytest_cache/
@@ -45,20 +32,13 @@ htmlcov/
 build/
 dist/
 downloads/
-eggs/
-.eggs/
 *.egg-info/
-.installed.cfg
-*.egg
-pip-wheel-metadata/
+.venv/
+.venv-*/
 venv/
 env/
 ENV/
-.venv/
-.venv-*/
 .uv-cache/
-
-# Node/Vite frontend artifacts
 node_modules/
 .nodeenv/
 .nodeenv-mirror/
@@ -70,7 +50,6 @@ node_modules/
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
-dist-ssr/
 .vite/
 .vite-temp/
 coverage/
@@ -78,9 +57,21 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-lerna-debug.log*
 
-# Training and model artifacts
+# Private notes and archives
+/training/private-docs/
+/training/archive/
+/training/.hf_cache/
+/training/configs/archive/
+/training/scripts/archive/
+/training/data/archive/
+/training/data/cache/
+/training/data/legacy/
+/training/data/online_feedback/
+/training/data/planner/archive/
+/skills/trip-planner-model-eval/
+
+# Model and training artifacts
 *.safetensors
 *.pt
 *.pth
@@ -94,99 +85,40 @@ wandb/
 runs/
 mlruns/
 lightning_logs/
-/training/configs/.serve_*.yaml
 /training/configs/**/.serve_*.yaml
-/training/configs/qwen25_7b/serve_fd600/
-
-# Training/eval outputs are regenerated locally by default.
-# Existing tracked reports remain tracked; force-add a new report only when it is meant to be published.
-/training/outputs/*
-!/training/outputs/eval/
-/training/outputs/eval/**
-!/training/outputs/eval/README.md
-
-# Training caches and bulky regenerated intermediate data
-/training/.hf_cache/
-/training/data/cache/
-/training/data/**/.cache/
-/training/data/**/tmp/
-/training/data/**/temp/
-/training/data/online_feedback/
-/training/archive/**/data/online_feedback/
-/training/data/legacy/
-/training/data/llamafactory/trip_legacy*.json
-/training/data/llamafactory/trip_planner_sft*.json
-/training/data/llamafactory/trip_planner_*main_clean*.json
-/training/data/llamafactory/trip_planner_*main_clean*.yaml
-/training/data/llamafactory/trip_planner_260511_realbudget_usage*.json
-/training/data/llamafactory/trip_planner_260511_realbudget_usage*.yaml
-/training/data/llamafactory/trip_planner_bestofn*.json
-/training/data/llamafactory/trip_planner_bestofn*.yaml
-/training/data/llamafactory/trip_planner_*bestofn*_train.json
-/training/data/llamafactory/trip_planner_*bestofn*_val.json
-/training/data/llamafactory/trip_planner_*bestofn*_train.yaml
-/training/data/llamafactory/trip_planner_*bestofn*_val.yaml
+/training/configs/**/serve_*/
+/training/configs/**/*legacy*.yaml
 /training/data/llamafactory/generated/
 /training/data/llamafactory/archive/
-/training/configs/archive/
-/training/configs/*legacy*.yaml
-/training/configs/**/*legacy*.yaml
-/training/configs/sft_qwen25_7b_lora_1000*.yaml
-/training/configs/**/sft_qwen25_7b_lora_1000*.yaml
-/training/scripts/archive/
-/training/data/legacy/sft/records.jsonl
-/training/data/legacy/sft/records_clean.jsonl
-/training/data/legacy/archive/**/records.jsonl
-/training/archive/2026-04-29_dirty_data_pipeline/data/sft_raw.jsonl
-/training/archive/2026-04-29_dirty_data_pipeline/data/amap_tool_results.jsonl
-/training/archive/*
-# Prompt ablation datasets are reproducible experiment byproducts.
-/training/data/archive
-/training/data/planner/archive/
-/training/data/planner/context_ablation/
-/training/data/planner/eval_harder/
-/training/data/planner/context_ablation/*prompt*/
-/training/data/planner/eval_hard_prompt*/
-/training/data/planner/eval_hard_smoke/
+/training/data/llamafactory/trip_planner_*.json
+/training/data/llamafactory/trip_planner_*.yaml
+/training/data/planner/sft/
+/training/data/planner/sft_runs/
+/training/data/planner/sft_realbudget_runs/
+/training/data/planner/sft_current/
+/training/data/planner/bestofn/
+/training/data/planner/dpo/
+/training/data/planner/eval_rebuilt_*/
+/training/data/planner/eval_hard_rebuilt_*/
 /training/data/planner/eval_harder_*/
 /training/data/planner/eval_smoke/
 /training/data/planner/eval_shards/
-/training/data/planner/eval_rebuilt_260517_comfort_hotel_fix/
-/training/data/planner/eval_hard_rebuilt_260517_comfort_hotel_fix/
-/training/data/planner/dpo/
-/training/data/planner/sft/
-/training/data/planner/sft_runs/
-/training/data/planner/attraction_prices/pipeline/
-/training/data/planner/eval_*/
-/training/data/planner/sft_current/
-/training/data/planner/sft_realbudget_runs/
-/training/data/planner/sft/archive/
-/training/data/planner/bestofn/
-/training/data/planner/attraction_prices/*.jsonl
-/training/data/planner/attraction_prices/*_draft.json
-/training/data/planner/attraction_prices/*_estimated.json
-/training/data/planner/attraction_prices/attraction_price_table_todo.json
-/training/data/planner/attraction_prices/generated/
+/training/data/planner/eval_hard_prompt*/
+/training/data/planner/context_ablation/
 /training/data/planner/**/judge_sample*/
-/training/data/planner/**/splits*/
+/training/data/planner/**/splits/
+/training/scripts/planner/training/
+/training/data/planner/attraction_prices/generated/
+/training/data/planner/attraction_prices/pipeline/
+/training/outputs/*
+!/training/outputs/eval/
+/training/outputs/eval/*
+!/training/outputs/eval/README.md
 
-# Historical SFT helper scripts that depend on archived data or local checkpoints.
-/training/scripts/planner/training/run_sft_resume_67.sh
-
-# Local archives, eval byproducts, and binary bundles
-/training/outputs/archive/
-/training/outputs/eval/archive/
-/training/outputs/eval/logs/
-/training/outputs/eval/pipeline/
-/training/outputs/eval/reports/
-/training/outputs/eval/shards/
+# Compressed bundles
 *.zip
 *.tar
 *.tar.gz
 *.tgz
 *.rar
 *.7z
-
-/training/scripts/planner/bestofn/run_260512_anti_leak1200_wait_gpu01.sh
-# Local Codex helper skill, not part of the public project.
-/skills/trip-planner-model-eval/

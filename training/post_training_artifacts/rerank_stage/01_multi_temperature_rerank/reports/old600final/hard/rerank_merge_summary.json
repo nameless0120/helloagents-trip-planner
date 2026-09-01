@@ -1,9 +1,0 @@
-{
-  "records": 300,
-  "status_counter": {
-    "rerank_selected": 300
-  },
-  "valid_candidates_seen": 896,
-  "invalid_candidates_seen": 4,
-  "output_file": "training/outputs/eval/by_model/sft_qwen25_7b_v3_260513_rerank_old600final/260513_rerank_old600final_hard_w10/generations.jsonl"
-}

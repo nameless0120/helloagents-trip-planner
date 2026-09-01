@@ -1,9 +1,0 @@
-model_name_or_path: Qwen/Qwen2.5-7B-Instruct
-adapter_name_or_path: training/outputs/qwen25_7b/sft_v3_260511_realbudget_usage_patch700_only_from_lr6e5_r32_b32_lr1e5_ctx24576_20260511
-template: qwen
-infer_backend: vllm
-infer_dtype: bfloat16
-trust_remote_code: true
-vllm_maxlen: 32768
-vllm_gpu_util: 0.85
-vllm_max_lora_rank: 32
