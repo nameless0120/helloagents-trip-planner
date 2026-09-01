@@ -26,7 +26,7 @@ run_pipeline.py
 | `planner/bestofn/` | 多候选生成、规则选择和导出 |
 | `planner/eval/` | 构建评测输入和生成评测报告 |
 | `eval/` | DPO、模型生成和规则评测 |
-| `serving/` | 启动和管理 Planner 模型服务 |
+| `serving/manage_planner_service.py` | 启动、停止和查看 base/SFT/DPO 模型服务 |
 | `validation/` | 校验 SFT、DPO 和 Eval 文件 |
 
 底层脚本可以单独运行来定位问题，但新的一轮数据和训练应从总入口开始。

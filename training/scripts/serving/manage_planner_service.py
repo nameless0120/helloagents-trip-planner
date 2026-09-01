@@ -17,6 +17,7 @@ import signal
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,48 @@ DEFAULT_VARIANT = "base"
 DEFAULT_BACKEND = "vllm"
 DEFAULT_DEVICES = "4,5,6,7"
 DEFAULT_API_MODEL = "trip-planner-base"
+
+
+@dataclass(frozen=True)
+class ManagedService:
+    name: str
+    variant: str
+    default_port: int
+    default_devices: str
+    default_api_model_name: str
+    no_adapter: bool = False
+
+
+MANAGED_SERVICES = {
+    "base": ManagedService(
+        name="base",
+        variant="base",
+        default_port=4397,
+        default_devices="4,5",
+        default_api_model_name="trip-planner-base",
+        no_adapter=True,
+    ),
+    "sft": ManagedService(
+        name="sft",
+        variant="sft",
+        default_port=4396,
+        default_devices="6",
+        default_api_model_name="trip-planner-sft",
+    ),
+    "dpo": ManagedService(
+        name="dpo",
+        variant="dpo",
+        default_port=4398,
+        default_devices="7",
+        default_api_model_name="trip-planner-dpo",
+    ),
+}
+SERVICE_ORDER = tuple(MANAGED_SERVICES)
+DEFAULT_ADAPTER_PATHS = {
+    "sft": PROJECT_ROOT / "training/outputs/qwen25_7b/sft",
+    "dpo": PROJECT_ROOT / "training/outputs/qwen25_7b/dpo",
+    "sft_dpo": PROJECT_ROOT / "training/outputs/qwen25_7b/sft_dpo",
+}
 
 
 def pidfile_for(port: int) -> Path:
@@ -152,6 +195,63 @@ def kill_pgid(pgid: int, sig: signal.Signals) -> bool:
         return False
 
 
+def parse_service_names(value: str) -> list[str]:
+    services = [item.strip() for item in value.split(",") if item.strip()]
+    unknown = [item for item in services if item not in MANAGED_SERVICES]
+    if unknown:
+        allowed = ", ".join(SERVICE_ORDER)
+        raise argparse.ArgumentTypeError(
+            f"unknown service(s): {', '.join(unknown)}; allowed: {allowed}"
+        )
+    return services
+
+
+def selected_service_specs(args: argparse.Namespace) -> list[ManagedService]:
+    services = args.services if isinstance(args.services, list) else parse_service_names(args.services)
+    return [MANAGED_SERVICES[name] for name in SERVICE_ORDER if name in services]
+
+
+def default_adapter_path(variant: str) -> Path | None:
+    return DEFAULT_ADAPTER_PATHS.get(variant)
+
+
+def resolved_adapter_path(args: argparse.Namespace) -> Path | None:
+    if args.no_adapter:
+        return None
+    adapter_path = args.adapter_path or default_adapter_path(args.variant)
+    return adapter_path.expanduser().resolve() if adapter_path else None
+
+
+def adapter_problem(path: Path) -> str | None:
+    if not path.exists():
+        return f"adapter path does not exist: {path}"
+    adapter_config = path / "adapter_config.json"
+    adapter_weights = [
+        path / "adapter_model.safetensors",
+        path / "adapter_model.bin",
+    ]
+    if not adapter_config.exists() or not any(item.exists() for item in adapter_weights):
+        return (
+            f"adapter path does not look like a finished LoRA checkpoint: {path}; "
+            "expected adapter_config.json and adapter_model.safetensors or adapter_model.bin"
+        )
+    return None
+
+
+def validate_start_inputs(args: argparse.Namespace) -> int:
+    adapter_path = resolved_adapter_path(args)
+    if adapter_path is None:
+        return 0
+    problem = adapter_problem(adapter_path)
+    if not problem:
+        return 0
+    if getattr(args, "dry_run", False):
+        print(f"warning: {problem}", file=sys.stderr)
+        return 0
+    print(f"Error: {problem}", file=sys.stderr)
+    return 2
+
+
 def status(args: argparse.Namespace) -> int:
     state = read_state(args.port)
     print(f"port: {args.port}")
@@ -217,6 +317,11 @@ def stop(args: argparse.Namespace) -> int:
 
 
 def start(args: argparse.Namespace) -> int:
+    input_status = validate_start_inputs(args)
+    if input_status:
+        return input_status
+    adapter_path = resolved_adapter_path(args)
+
     existing = port_pids(args.port)
     if existing and not args.force:
         print(f"port {args.port} is already in use by pid(s): {', '.join(map(str, sorted(existing)))}", file=sys.stderr)
@@ -254,6 +359,13 @@ def start(args: argparse.Namespace) -> int:
     if args.no_adapter:
         cmd.append("--no-adapter")
 
+    if getattr(args, "dry_run", False):
+        print(f"would start planner service port={args.port}")
+        print(f"endpoint: http://127.0.0.1:{args.port}/v1")
+        print(f"api model: {args.api_model_name}")
+        print(f"cmd: {' '.join(cmd)}")
+        return 0
+
     env = os.environ.copy()
     env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
@@ -278,6 +390,7 @@ def start(args: argparse.Namespace) -> int:
         "cuda_visible_devices": args.cuda_visible_devices,
         "api_model_name": args.api_model_name,
         "model_path": str(args.model_path) if args.model_path else None,
+        "adapter_path": str(adapter_path) if adapter_path else None,
         "log_file": str(log_file),
         "cmd": cmd,
         "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -296,12 +409,124 @@ def restart(args: argparse.Namespace) -> int:
     return start(args)
 
 
+def service_start_args(args: argparse.Namespace, service: ManagedService) -> argparse.Namespace:
+    port = getattr(args, service.name + "_port")
+    api_model_name = getattr(args, service.name + "_api_model_name")
+    log_file = None
+    if args.log_dir:
+        log_file = args.log_dir / f"serve_{port}_{api_model_name}.log"
+    return argparse.Namespace(
+        port=port,
+        variant=service.variant,
+        infer_backend=args.infer_backend,
+        cuda_visible_devices=getattr(args, service.name + "_devices"),
+        api_model_name=api_model_name,
+        model_path=args.model_path,
+        adapter_path=getattr(args, service.name + "_adapter_path", None),
+        no_adapter=service.no_adapter,
+        vllm_maxlen=args.vllm_maxlen,
+        vllm_gpu_util=args.vllm_gpu_util,
+        log_file=log_file,
+        force=args.force,
+        dry_run=args.dry_run,
+    )
+
+
+def service_stop_args(args: argparse.Namespace, service: ManagedService) -> argparse.Namespace:
+    return argparse.Namespace(
+        port=getattr(args, service.name + "_port"),
+        timeout=args.timeout,
+        kill=args.kill,
+    )
+
+
+def service_status_args(args: argparse.Namespace, service: ManagedService) -> argparse.Namespace:
+    return argparse.Namespace(port=getattr(args, service.name + "_port"))
+
+
+def status_all(args: argparse.Namespace) -> int:
+    exit_code = 0
+    for service in selected_service_specs(args):
+        print(f"\n== {service.name} ({service.default_api_model_name}) ==")
+        exit_code = max(exit_code, status(service_status_args(args, service)))
+    return exit_code
+
+
+def stop_all(args: argparse.Namespace) -> int:
+    exit_code = 0
+    for service in reversed(selected_service_specs(args)):
+        print(f"\n== {service.name} ({service.default_api_model_name}) ==")
+        exit_code = max(exit_code, stop(service_stop_args(args, service)))
+    return exit_code
+
+
+def start_all(args: argparse.Namespace) -> int:
+    service_args = [(service, service_start_args(args, service)) for service in selected_service_specs(args)]
+    if not args.dry_run:
+        for service, start_args in service_args:
+            input_status = validate_start_inputs(start_args)
+            if input_status:
+                print(f"failed before starting services: {service.name}", file=sys.stderr)
+                return input_status
+            existing = port_pids(start_args.port)
+            if existing and not start_args.force:
+                pids = ", ".join(map(str, sorted(existing)))
+                print(
+                    f"failed before starting services: port {start_args.port} "
+                    f"is already in use by pid(s): {pids}",
+                    file=sys.stderr,
+                )
+                return 1
+
+    for service, start_args in service_args:
+        print(f"\n== {service.name} ({start_args.api_model_name}) ==")
+        exit_code = start(start_args)
+        if exit_code:
+            return exit_code
+    return 0
+
+
+def restart_all(args: argparse.Namespace) -> int:
+    stop_code = stop_all(args)
+    if stop_code:
+        return stop_code
+    return start_all(args)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Manage the local trip planner model service.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     def add_common(sub: argparse.ArgumentParser) -> None:
         sub.add_argument("--port", type=int, default=DEFAULT_PORT)
+
+    def add_multi_common(sub: argparse.ArgumentParser) -> None:
+        sub.add_argument(
+            "--services",
+            type=parse_service_names,
+            default=list(SERVICE_ORDER),
+            help=f"Comma-separated services to manage. Available: {', '.join(SERVICE_ORDER)}.",
+        )
+        sub.add_argument("--base-port", type=int, default=MANAGED_SERVICES["base"].default_port)
+        sub.add_argument("--sft-port", type=int, default=MANAGED_SERVICES["sft"].default_port)
+        sub.add_argument("--dpo-port", type=int, default=MANAGED_SERVICES["dpo"].default_port)
+
+    def add_multi_start_options(sub: argparse.ArgumentParser) -> None:
+        sub.add_argument("--infer-backend", choices=["huggingface", "vllm", "sglang", "ktransformers"], default=DEFAULT_BACKEND)
+        sub.add_argument("--model-path", type=Path, default=None, help="Base model path or HF repo id passed to serve_planner_model.py.")
+        sub.add_argument("--base-devices", default=MANAGED_SERVICES["base"].default_devices)
+        sub.add_argument("--sft-devices", default=MANAGED_SERVICES["sft"].default_devices)
+        sub.add_argument("--dpo-devices", default=MANAGED_SERVICES["dpo"].default_devices)
+        sub.add_argument("--base-api-model-name", default=MANAGED_SERVICES["base"].default_api_model_name)
+        sub.add_argument("--sft-api-model-name", default=MANAGED_SERVICES["sft"].default_api_model_name)
+        sub.add_argument("--dpo-api-model-name", default=MANAGED_SERVICES["dpo"].default_api_model_name)
+        sub.add_argument("--sft-adapter-path", type=Path, default=None)
+        sub.add_argument("--dpo-adapter-path", type=Path, default=None)
+        sub.add_argument("--vllm-maxlen", type=int, default=32768)
+        sub.add_argument("--vllm-gpu-util", type=float, default=0.85)
+        sub.add_argument("--log-dir", type=Path, default=None)
+        sub.add_argument("--force", action="store_true", help="Start even if a selected port appears busy.")
+        sub.add_argument("--dry-run", action="store_true", help="Print the services that would be started.")
 
     status_parser = subparsers.add_parser("status", help="Show service status.")
     add_common(status_parser)
@@ -343,6 +568,28 @@ def parse_args() -> argparse.Namespace:
     restart_parser.add_argument("--log-file", type=Path, default=None)
     restart_parser.add_argument("--force", action="store_true")
     restart_parser.set_defaults(func=restart)
+
+    status_all_parser = subparsers.add_parser("status-all", help="Show status for the base/SFT/DPO services.")
+    add_multi_common(status_all_parser)
+    status_all_parser.set_defaults(func=status_all)
+
+    stop_all_parser = subparsers.add_parser("stop-all", help="Stop the selected base/SFT/DPO services.")
+    add_multi_common(stop_all_parser)
+    stop_all_parser.add_argument("--timeout", type=float, default=20)
+    stop_all_parser.add_argument("--kill", action="store_true", help="Escalate to SIGKILL if SIGTERM does not exit.")
+    stop_all_parser.set_defaults(func=stop_all)
+
+    start_all_parser = subparsers.add_parser("start-all", help="Start the selected base/SFT/DPO services.")
+    add_multi_common(start_all_parser)
+    add_multi_start_options(start_all_parser)
+    start_all_parser.set_defaults(func=start_all)
+
+    restart_all_parser = subparsers.add_parser("restart-all", help="Stop then start the selected base/SFT/DPO services.")
+    add_multi_common(restart_all_parser)
+    restart_all_parser.add_argument("--timeout", type=float, default=20)
+    restart_all_parser.add_argument("--kill", action="store_true", help="Escalate to SIGKILL if SIGTERM does not exit.")
+    add_multi_start_options(restart_all_parser)
+    restart_all_parser.set_defaults(func=restart_all)
 
     return parser.parse_args()
 

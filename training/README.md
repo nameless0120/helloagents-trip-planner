@@ -63,7 +63,8 @@ RUN_DIR="training/data/planner/sft_runs/$(date +%Y%m%d_%H%M%S)_reader_train"
   --workers 1 \
   --sft-dir "$RUN_DIR" \
   --config training/configs/qwen25_7b/sft_qwen25_7b_lora.yaml \
-  --llamafactory-root ../LLaMA-Factory
+  --llamafactory-root ../LLaMA-Factory \
+  --train-output-dir training/outputs/qwen25_7b/sft
 ```
 
 正式运行会调用高德、数据生成模型和 GPU。只检查命令时追加 `--dry-run`，不会调用 API 或启动训练。
@@ -81,6 +82,49 @@ RUN_DIR="training/data/planner/sft_runs/$(date +%Y%m%d_%H%M%S)_reader_train"
 ```
 
 生成结果写入 run 目录，导出的 LLaMA-Factory 文件写入 `data/llamafactory/generated/`，并登记在 `dataset_info.json`。
+
+## 一条命令启动模型服务
+
+DPO 数据生成默认需要两个本地模型服务：
+
+```text
+base model -> http://127.0.0.1:4397/v1 -> trip-planner-base
+SFT model  -> http://127.0.0.1:4396/v1 -> trip-planner-sft
+```
+
+启动这两个服务：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/serving/manage_planner_service.py \
+  start-all \
+  --services base,sft \
+  --base-devices 4,5 \
+  --sft-devices 6 \
+  --sft-adapter-path training/outputs/qwen25_7b/sft
+```
+
+DPO 训练完成后，如果要同时评测 SFT 和 DPO，可以把 DPO 服务也起起来：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/serving/manage_planner_service.py \
+  start-all \
+  --services base,sft,dpo \
+  --base-devices 4,5 \
+  --sft-devices 6 \
+  --dpo-devices 7 \
+  --sft-adapter-path training/outputs/qwen25_7b/sft \
+  --dpo-adapter-path training/outputs/qwen25_7b/dpo
+```
+
+查看和停止服务：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/serving/manage_planner_service.py status-all
+.venv-training-py311/bin/python3 training/scripts/serving/manage_planner_service.py stop-all --kill
+```
+
+`start-all` 只负责起模型服务，不会生成数据或训练。训练输出目录不是默认路径时，用
+`--sft-adapter-path` 或 `--dpo-adapter-path` 指到实际 LoRA 目录。
 
 ## 其他阶段
 

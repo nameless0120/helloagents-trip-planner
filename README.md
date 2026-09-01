@@ -252,10 +252,52 @@ RUN_DIR="training/data/planner/sft_runs/$(date +%Y%m%d_%H%M%S)_reader_train"
   --workers 1 \
   --sft-dir "$RUN_DIR" \
   --config training/configs/qwen25_7b/sft_qwen25_7b_lora.yaml \
-  --llamafactory-root ../LLaMA-Factory
+  --llamafactory-root ../LLaMA-Factory \
+  --train-output-dir training/outputs/qwen25_7b/sft
 ```
 
 这条命令会自动把本轮导出的 `dataset`、`eval_dataset`、`dataset_dir` 和训练输出目录接给 LLaMA-Factory，不需要手动改 YAML 或复制 JSON。训练阶段需要本地模型缓存、CUDA GPU 和已经应用项目补丁的 LLaMA-Factory；只生成数据时不要加 `--stage train`。
+
+### 5. 启动本地模型服务
+
+DPO 数据生成和模型评测需要 OpenAI-compatible 的本地模型服务。统一用一个脚本管理：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/serving/manage_planner_service.py \
+  start-all \
+  --services base,sft \
+  --base-devices 4,5 \
+  --sft-devices 6 \
+  --sft-adapter-path training/outputs/qwen25_7b/sft
+```
+
+默认端口和模型名：
+
+```text
+base -> http://127.0.0.1:4397/v1 -> trip-planner-base
+sft  -> http://127.0.0.1:4396/v1 -> trip-planner-sft
+dpo  -> http://127.0.0.1:4398/v1 -> trip-planner-dpo
+```
+
+DPO 训练后要评测 DPO 模型时，再加 `dpo`：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/serving/manage_planner_service.py \
+  start-all \
+  --services base,sft,dpo \
+  --base-devices 4,5 \
+  --sft-devices 6 \
+  --dpo-devices 7 \
+  --sft-adapter-path training/outputs/qwen25_7b/sft \
+  --dpo-adapter-path training/outputs/qwen25_7b/dpo
+```
+
+查看和停止：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/serving/manage_planner_service.py status-all
+.venv-training-py311/bin/python3 training/scripts/serving/manage_planner_service.py stop-all --kill
+```
 
 详细的阶段参数、DPO、评测和补丁说明见 [training/README.md](training/README.md) 和 [LLaMA-Factory 本地改动说明](training/docs/内部文档/DPO分块LogProb方案说明.md)。
 

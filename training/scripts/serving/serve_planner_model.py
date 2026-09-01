@@ -7,20 +7,24 @@ checkpoint is Qwen2.5-7B-Instruct, which is what this launcher uses by default.
 Examples:
     cd .
 
-    # Serve the base Qwen2.5-7B-Instruct model on port 4396.
+    # Serve the base Qwen2.5-7B-Instruct model for DPO generation.
     .venv-training-py311/bin/python3 training/scripts/serving/serve_planner_model.py \
       --variant base \
-      --cuda-visible-devices 6
+      --port 4397 \
+      --api-model-name trip-planner-base \
+      --cuda-visible-devices 4,5
 
     # Serve the SFT LoRA result after training finishes.
     .venv-training-py311/bin/python3 training/scripts/serving/serve_planner_model.py \
       --variant sft \
       --cuda-visible-devices 6 \
-      --api-model-name trip-planner-sft-dpo
+      --api-model-name trip-planner-sft
 
     # Serve the DPO-only result.
     .venv-training-py311/bin/python3 training/scripts/serving/serve_planner_model.py \
       --variant dpo \
+      --port 4398 \
+      --api-model-name trip-planner-dpo \
       --cuda-visible-devices 6
 
     # Serve the SFT+DPO result.
