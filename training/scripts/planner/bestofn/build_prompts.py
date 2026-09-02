@@ -19,10 +19,11 @@ sys.path.insert(0, str(EVAL_SCRIPTS_DIR))
 
 from app.agents.prompts import PLANNER_AGENT_PROMPT  # noqa: E402
 from eval_utils import read_jsonl, weather_bucket, write_json, write_jsonl  # noqa: E402
+from shared.paths import EVAL_DATA_DIR, BESTOFN_DIR  # noqa: E402
 
 
-DEFAULT_RECORDS = PROJECT_ROOT / "training/data/planner/eval/records.jsonl"
-DEFAULT_OUTPUT = PROJECT_ROOT / "training/data/planner/bestofn/prompts.jsonl"
+DEFAULT_RECORDS = EVAL_DATA_DIR / "records.jsonl"
+DEFAULT_OUTPUT = BESTOFN_DIR / "prompts.jsonl"
 
 
 SMOKE_BUDGET_TARGETS = {

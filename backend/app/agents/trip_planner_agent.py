@@ -50,7 +50,7 @@ class MultiAgentTripPlanner:
         try:
             settings = get_settings()
             self.settings = settings
-            self.amap_api_key = settings.amap_api_key or os.getenv("AMAP_MAPS_API_KEY") or os.getenv("AMAP_API_KEY")
+            self.amap_api_key = settings.amap_api_key
             self.planner_context_builder = PlannerContextBuilder(self.amap_api_key)
             self.tool_llm = get_llm()
             self.planner_llm = get_planner_llm()

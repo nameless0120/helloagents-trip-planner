@@ -39,7 +39,8 @@ sys.path[:0] = [
     str(BACKEND_DIR),
 ]
 
-from shared.common import DATA_DIR, load_project_env, read_jsonl, write_json  # noqa: E402
+from shared.common import load_project_env, read_jsonl, write_json  # noqa: E402
+from shared.paths import EVAL_DATA_DIR  # noqa: E402
 from generate_sft_data import (  # noqa: E402
     PLANNER_AGENT_PROMPT,
     append_jsonl,
@@ -59,7 +60,7 @@ from generate_sft_data import (  # noqa: E402
 )
 
 
-DEFAULT_OUTPUT_DIR = DATA_DIR / "planner" / "eval"
+DEFAULT_OUTPUT_DIR = EVAL_DATA_DIR
 
 EVAL_PERSON_DAY_BUDGETS = {
     "limited": [220, 270, 320],

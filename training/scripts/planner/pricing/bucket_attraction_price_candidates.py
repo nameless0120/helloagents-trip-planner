@@ -8,12 +8,18 @@ from collections import Counter
 from datetime import datetime
 import json
 from pathlib import Path
+import sys
 from typing import Any
 
-
 ROOT = Path(__file__).resolve().parents[4]
-DEFAULT_INPUT = ROOT / "training/data/planner/attraction_prices/generated/attraction_candidates.jsonl"
-DEFAULT_OUTPUT_DIR = ROOT / "training/data/planner/attraction_prices"
+SCRIPTS_DIR = ROOT / "training" / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+from shared.paths import ATTRACTION_PRICES_DIR  # noqa: E402
+
+DEFAULT_INPUT = ATTRACTION_PRICES_DIR / "generated/attraction_candidates.jsonl"
+DEFAULT_OUTPUT_DIR = ATTRACTION_PRICES_DIR
 
 
 HIGH_PRICE_KEYWORDS = [

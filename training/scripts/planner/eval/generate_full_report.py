@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -12,8 +13,13 @@ from typing import Any
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
-DEFAULT_STANDARD_RECORDS = PROJECT_ROOT / "training/data/planner/eval/records.jsonl"
-DEFAULT_HARD_RECORDS = PROJECT_ROOT / "training/data/planner/eval_hard/records.jsonl"
+SCRIPTS_DIR = PROJECT_ROOT / "training/scripts"
+sys.path.insert(0, str(SCRIPTS_DIR))
+
+from shared.paths import EVAL_DATA_DIR, EVAL_HARD_DATA_DIR  # noqa: E402
+
+DEFAULT_STANDARD_RECORDS = EVAL_DATA_DIR / "records.jsonl"
+DEFAULT_HARD_RECORDS = EVAL_HARD_DATA_DIR / "records.jsonl"
 
 HARDPASS_METRICS = [
     ("硬通过", "hard_pass"),

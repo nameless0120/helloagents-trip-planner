@@ -19,12 +19,12 @@ sys.path.insert(0, str(BACKEND_DIR))
 sys.path.insert(0, str(EVAL_SCRIPTS_DIR))
 
 from eval_utils import read_jsonl, write_json, write_jsonl  # noqa: E402
+from shared.paths import BESTOFN_DIR, LLAMAFACTORY_DIR  # noqa: E402
 
 
-DEFAULT_PROMPTS = PROJECT_ROOT / "training/data/planner/bestofn/prompts.jsonl"
-DEFAULT_CANDIDATES = PROJECT_ROOT / "training/data/planner/bestofn/candidates.jsonl"
-DEFAULT_SELECTED = PROJECT_ROOT / "training/data/planner/bestofn/selected.jsonl"
-LLAMAFACTORY_DIR = PROJECT_ROOT / "training/data/llamafactory"
+DEFAULT_PROMPTS = BESTOFN_DIR / "prompts.jsonl"
+DEFAULT_CANDIDATES = BESTOFN_DIR / "candidates.jsonl"
+DEFAULT_SELECTED = BESTOFN_DIR / "selected.jsonl"
 DATASET_INFO = LLAMAFACTORY_DIR / "dataset_info.json"
 
 

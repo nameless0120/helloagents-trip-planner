@@ -11,14 +11,18 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
-LLAMAFACTORY_DIR = PROJECT_ROOT / "training/data/llamafactory"
-LLAMAFACTORY_GENERATED_DIR = LLAMAFACTORY_DIR / "generated"
+SCRIPTS_DIR = PROJECT_ROOT / "training/scripts"
+sys.path.insert(0, str(SCRIPTS_DIR))
+
+from shared.paths import LLAMAFACTORY_DIR, LLAMAFACTORY_GENERATED_DIR  # noqa: E402
+
 DATASET_INFO = LLAMAFACTORY_DIR / "dataset_info.json"
 DEFAULT_CATEGORY = "usable_budget_clean"
 SPLIT_SEED = 20260427

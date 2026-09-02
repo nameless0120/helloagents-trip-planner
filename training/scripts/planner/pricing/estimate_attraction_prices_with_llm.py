@@ -22,10 +22,11 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 from shared.common import read_jsonl, write_json  # noqa: E402
 from shared.llm_client import DataGenLLM  # noqa: E402
+from shared.paths import ATTRACTION_PRICES_DIR  # noqa: E402
 
 
-DEFAULT_INPUT = ROOT / "training/data/planner/attraction_prices/generated/request_count_ge5_bucketed_candidates.jsonl"
-DEFAULT_OUTPUT_DIR = ROOT / "training/data/planner/attraction_prices"
+DEFAULT_INPUT = ATTRACTION_PRICES_DIR / "generated/request_count_ge5_bucketed_candidates.jsonl"
+DEFAULT_OUTPUT_DIR = ATTRACTION_PRICES_DIR
 
 
 SYSTEM_PROMPT = """你是旅行规划训练数据的景点票价估算助手。

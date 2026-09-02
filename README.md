@@ -157,6 +157,7 @@ npm run dev -- --host 0.0.0.0 --port 5173
 SFT 数据生成
   -> SFT 数据审计/导出
   -> SFT 训练
+  -> Best-of-N 数据增强 / 多候选 rerank（可选，但最终有效）
   -> DPO 数据构造和训练
   -> 模型评测出结果
 ```
@@ -186,6 +187,15 @@ DATA_GEN_THINKING=false
 
 也可以继续使用 `DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL` 等变量。数据生成默认关闭 thinking；关闭时不会发送 `reasoning_effort` 或 `thinking` 参数，适合直接生成后端需要的 JSON。
 
+### 配套数据下载，可选
+
+如果你想先看现成数据和评测产物，不想一上来就调用 API 生成，可以下载配套材料包：
+
+- 名称：`helloagents-后训练数据`
+- 链接：<https://pan.baidu.com/s/5oNsK7pwQnqzQEUg5ykb09Q>
+
+这份数据适合先对照教程理解流程。真正复现 LoRA 时，仍然建议按下面命令自己跑一轮，并保留每轮的 `pipeline_manifest.json`、usage 日志和审计报告。
+
 如果要训练，还要准备项目指定的 LLaMA-Factory checkout。已经准备好的可以跳过 clone：
 
 ```bash
@@ -210,12 +220,14 @@ cd ../helloagents-trip-planner
 
 ### 3. 设置本轮路径
 
-下面的 5 条主命令会复用这几个变量，变量名只为少写重复路径：
+下面的主命令会复用这几个变量，变量名只为少写重复路径：
 
 ```bash
 export RUN_NAME="$(date +%Y%m%d_%H%M%S)_reader"
 export SFT_RUN="training/data/planner/sft_runs/${RUN_NAME}"
 export SFT_DATASET="trip_planner_sft_${RUN_NAME}"
+export BESTOFN_RUN="training/data/planner/bestofn/${RUN_NAME}"
+export BESTOFN_DATASET="trip_planner_bestofn_${RUN_NAME}"
 export DPO_RUN="training/data/planner/dpo/${RUN_NAME}"
 export DPO_DATASET="trip_planner_dpo_${RUN_NAME}"
 ```
@@ -260,7 +272,41 @@ export DPO_DATASET="trip_planner_dpo_${RUN_NAME}"
 
 训练阶段需要本地模型缓存、CUDA GPU 和已经应用项目补丁的 LLaMA-Factory。这里不会重新生成数据，只读取上一步登记好的数据集。
 
-### 7. DPO 微调，一个命令
+### 7. Best-of-N 数据增强，一个命令
+
+Best-of-N 不是废弃流程。它会让当前 SFT 模型为同一份 `PlannerContext` 生成多个候选，再用规则选择更好的答案，导出新的 SFT 样本和 DPO pair。历史报告里的日期化 `.sh` 训练脚本不再作为入口；当前统一从 `run_pipeline.py --stage bestofn` 开始。
+
+先启动 SFT 模型服务：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/serving/manage_planner_service.py \
+  start-all \
+  --services sft \
+  --sft-devices 6 \
+  --sft-adapter-path training/outputs/qwen25_7b/sft
+```
+
+然后生成并选择候选：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage bestofn \
+  --records "$SFT_RUN/export_budget_clean/records.jsonl" \
+  --bestofn-dir "$BESTOFN_RUN" \
+  --bestofn-dataset-prefix "$BESTOFN_DATASET" \
+  --bestofn-base-url http://127.0.0.1:4396/v1 \
+  --bestofn-api-model trip-planner-sft \
+  --bestofn-spec t02:0.2:1 \
+  --bestofn-spec t05:0.5:2 \
+  --bestofn-spec t08:0.8:1 \
+  --workers 1
+```
+
+导出的数据集名是 `${BESTOFN_DATASET}_sft_train`、`${BESTOFN_DATASET}_sft_val`、`${BESTOFN_DATASET}_pair_train` 和 `${BESTOFN_DATASET}_pair_val`。如果要继续做 Best-of-N replay SFT，把训练命令里的 `--train-dataset` 和 `--train-eval-dataset` 换成这组 SFT 数据集名即可。
+
+产品侧的多候选 rerank 在后端 `backend/app/planner/rerank.py`，默认由 `PLANNER_ENABLE_RERANK=1` 开启，`PLANNER_RERANK_CANDIDATE_COUNT` 控制候选数。
+
+### 8. DPO 微调，一个命令
 
 DPO 需要先启动 base 和 SFT 模型服务：
 
@@ -289,7 +335,7 @@ DPO 需要先启动 base 和 SFT 模型服务：
 
 DPO 这一条命令会生成 prompt、调用 base/SFT 生成候选、用强模型 judge、构造 chosen/rejected pair、做 DPO 数据审计，然后启动 DPO 训练。
 
-### 8. 评测出结果，一个命令
+### 9. 评测出结果，一个命令
 
 DPO 训练完成后，启动 DPO 服务：
 
@@ -357,7 +403,7 @@ dpo  -> http://127.0.0.1:4398/v1 -> trip-planner-dpo
 - [training/docs/README.md](training/docs/README.md)：长期文档索引
 - [training/outputs/eval/README.md](training/outputs/eval/README.md)：评测输出说明
 
-当前仓库保留主线材料，不上传历史数据、私有交流记录、模型权重、checkpoint 和大规模运行产物。
+当前仓库保留当前主线代码、轻量评测输入、历史报告和必要说明；不提交私有交流记录、模型权重、checkpoint 和大规模运行产物。
 
 ## 安全与忽略规则
 

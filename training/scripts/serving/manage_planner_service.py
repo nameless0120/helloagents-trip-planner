@@ -22,12 +22,17 @@ from pathlib import Path
 from typing import Any
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(_PROJECT_ROOT / "training/scripts"))
+
+from shared.paths import OUTPUTS_DIR, PROJECT_ROOT, SCRIPTS_DIR  # noqa: E402
+
+
 PYTHON = PROJECT_ROOT / ".venv-training-py311/bin/python3"
-SERVE_SCRIPT = PROJECT_ROOT / "training/scripts/serving/serve_planner_model.py"
-STATE_DIR = PROJECT_ROOT / "training/outputs/model_service"
+SERVE_SCRIPT = SCRIPTS_DIR / "serving/serve_planner_model.py"
+STATE_DIR = OUTPUTS_DIR / "model_service"
 PID_DIR = STATE_DIR / "pids"
-DEFAULT_LOG_DIR = PROJECT_ROOT / "training/outputs/qwen25_7b"
+DEFAULT_LOG_DIR = OUTPUTS_DIR / "qwen25_7b"
 
 DEFAULT_PORT = 4396
 DEFAULT_VARIANT = "base"
@@ -72,9 +77,9 @@ MANAGED_SERVICES = {
 }
 SERVICE_ORDER = tuple(MANAGED_SERVICES)
 DEFAULT_ADAPTER_PATHS = {
-    "sft": PROJECT_ROOT / "training/outputs/qwen25_7b/sft",
-    "dpo": PROJECT_ROOT / "training/outputs/qwen25_7b/dpo",
-    "sft_dpo": PROJECT_ROOT / "training/outputs/qwen25_7b/sft_dpo",
+    "sft": OUTPUTS_DIR / "qwen25_7b/sft",
+    "dpo": OUTPUTS_DIR / "qwen25_7b/dpo",
+    "sft_dpo": OUTPUTS_DIR / "qwen25_7b/sft_dpo",
 }
 
 

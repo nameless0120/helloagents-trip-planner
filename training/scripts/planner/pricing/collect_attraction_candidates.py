@@ -27,18 +27,20 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[4]
 BACKEND_DIR = ROOT / "backend"
 SCRIPT_DIR = Path(__file__).resolve().parent
+SCRIPTS_DIR = ROOT / "training" / "scripts"
 DATA_SCRIPT_DIR = ROOT / "training" / "scripts" / "planner" / "data"
 
-for path in [str(ROOT), str(BACKEND_DIR), str(SCRIPT_DIR), str(DATA_SCRIPT_DIR)]:
+for path in [str(ROOT), str(BACKEND_DIR), str(SCRIPT_DIR), str(DATA_SCRIPT_DIR), str(SCRIPTS_DIR)]:
     if path not in sys.path:
         sys.path.insert(0, path)
 
 from app.planner.pricing import normalize_city, normalize_poi_name, parse_float, poi_name_aliases  # noqa: E402
+from shared.paths import ATTRACTION_PRICES_DIR, EVAL_DATA_DIR  # noqa: E402
 
 
 BASE_BUCKETS = ["classic_pois", "preference_pois", "experience_pois"]
-DEFAULT_RECORDS = ROOT / "training/data/planner/eval/records.jsonl"
-DEFAULT_OUTPUT_DIR = ROOT / "training/data/planner/attraction_prices"
+DEFAULT_RECORDS = EVAL_DATA_DIR / "records.jsonl"
+DEFAULT_OUTPUT_DIR = ATTRACTION_PRICES_DIR
 
 
 @dataclass

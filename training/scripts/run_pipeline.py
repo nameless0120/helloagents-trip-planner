@@ -49,15 +49,25 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Iterable, Sequence
 
+from shared.paths import (
+    ATTRACTION_PRICES_DIR,
+    BESTOFN_DIR,
+    DPO_DIR,
+    EVAL_OUTPUT_DIR,
+    LLAMAFACTORY_DIR,
+    LLAMAFACTORY_GENERATED_DIR,
+    PATCHES_DIR,
+    PLANNER_DATA_DIR,
+    PROJECT_ROOT,
+    SCRIPTS_DIR,
+    SFT_RUNS_DIR,
+    TRAINING_DIR,
+)
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-TRAINING_DIR = PROJECT_ROOT / "training"
-SCRIPTS_DIR = TRAINING_DIR / "scripts"
 LLAMAFACTORY_BASE_COMMIT = "9a0cfdccfa234304879f83e0c2c17b5ede8121fe"
-LLAMAFACTORY_PATCH = TRAINING_DIR / "patches/llamafactory-9a0cfdcc-local.patch"
+LLAMAFACTORY_PATCH = PATCHES_DIR / "llamafactory-9a0cfdcc-local.patch"
 DEFAULT_LLAMAFACTORY_ROOT = PROJECT_ROOT.parent / "LLaMA-Factory"
-LLAMAFACTORY_DATA_DIR = TRAINING_DIR / "data/llamafactory"
-DATASET_INFO_PATH = LLAMAFACTORY_DATA_DIR / "dataset_info.json"
+DATASET_INFO_PATH = LLAMAFACTORY_DIR / "dataset_info.json"
 
 SFT_SCRIPT = SCRIPTS_DIR / "planner/data/generate_sft_data.py"
 SFT_AUDIT_SCRIPT = SCRIPTS_DIR / "planner/audit/audit_sft_budget_fit.py"
@@ -97,14 +107,14 @@ STAGE_ORDER = [
     "train",
 ]
 TODAY_SLUG = date.today().strftime("%y%m%d")
-DEFAULT_SFT_DIR = TRAINING_DIR / "data/planner/sft_runs" / f"{TODAY_SLUG}_pipeline"
+DEFAULT_SFT_DIR = SFT_RUNS_DIR / f"{TODAY_SLUG}_pipeline"
 SFT_PIPELINE_STAGES = {"sft-data", "sft-audit"}
 DEFAULT_OUTPUT_DIRS = {
-    "pricing": TRAINING_DIR / "data/planner/attraction_prices" / "pipeline",
-    "eval-data": TRAINING_DIR / "data/planner" / f"eval_{TODAY_SLUG}",
-    "bestofn": TRAINING_DIR / "data/planner/bestofn" / "pipeline",
-    "dpo": TRAINING_DIR / "data/planner/dpo" / "pipeline",
-    "eval": TRAINING_DIR / "outputs/eval" / "pipeline",
+    "pricing": ATTRACTION_PRICES_DIR / "pipeline",
+    "eval-data": PLANNER_DATA_DIR / f"eval_{TODAY_SLUG}",
+    "bestofn": BESTOFN_DIR / "pipeline",
+    "dpo": DPO_DIR / "pipeline",
+    "eval": EVAL_OUTPUT_DIR / "pipeline",
 }
 REQUIRED_PYTHON_MODULES = ["dotenv", "httpx", "openai", "pydantic", "pydantic_settings"]
 # These imports are only needed when the final ``train`` stage is selected.
@@ -124,6 +134,37 @@ REQUIRED_TRAINING_MODULES = [
     "yaml",
     "matplotlib",
 ]
+ALL_PIPELINE_STAGES = [stage for stage in STAGE_ORDER if stage != "preflight"]
+STAGE_FILE_REQUIREMENTS = {
+    "sft-request": {"SFT 请求生成入口": SFT_SCRIPT},
+    "sft-context": {"SFT 请求和 PlannerContext 入口": SFT_SCRIPT},
+    "sft-data": {"SFT 数据生成入口": SFT_SCRIPT},
+    "sft-audit": {
+        "SFT 预算审计": SFT_AUDIT_SCRIPT,
+        "SFT 可用性分类": SFT_CLASSIFY_SCRIPT,
+        "SFT 子集导出": SFT_EXPORT_SCRIPT,
+    },
+    "pricing": {
+        "票价候选收集": PRICING_COLLECT_SCRIPT,
+        "票价候选分桶": PRICING_BUCKET_SCRIPT,
+    },
+    "eval-data": {"冻结评估集构建": EVAL_DATA_SCRIPT},
+    "bestofn": {
+        "Best-of-N prompt": BESTOFN_PROMPTS_SCRIPT,
+        "Best-of-N 候选生成": BESTOFN_CANDIDATES_SCRIPT,
+        "Best-of-N 选择导出": BESTOFN_SELECT_SCRIPT,
+    },
+    "dpo": {
+        "通用 DPO prompt": DPO_PROMPTS_SCRIPT,
+        "通用 DPO 候选生成": DPO_CANDIDATES_SCRIPT,
+        "通用 DPO judge": DPO_JUDGE_SCRIPT,
+        "通用 DPO pair 构造": DPO_PAIRS_SCRIPT,
+        "通用 DPO 审计": DPO_AUDIT_SCRIPT,
+    },
+    "eval": {"评测入口": EVAL_PIPELINE_SCRIPT},
+    "validate": {"TripPlan 校验入口": VALIDATION_SCRIPT},
+    "train": {"训练依赖文件": TRAINING_DIR / "requirements-training.txt"},
+}
 
 
 class PipelineError(RuntimeError):
@@ -324,15 +365,22 @@ def require_nonempty_file(path: Path, description: str) -> None:
         raise PipelineError(f"{description}为空：{relative_or_absolute(path)}")
 
 
-def require_nonempty_json_array(path: Path, description: str) -> None:
-    """确认导出的 JSON 数组至少有一条样本。"""
+def require_json_array(path: Path, description: str, *, nonempty: bool = False) -> None:
+    """确认文件是 JSON 数组，可选地要求至少有一条样本。"""
     require_file(path, description)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise PipelineError(f"{description}不是有效 JSON：{relative_or_absolute(path)}") from exc
-    if not isinstance(data, list) or not data:
+    if not isinstance(data, list):
+        raise PipelineError(f"{description}不是 JSON 数组：{relative_or_absolute(path)}")
+    if nonempty and not data:
         raise PipelineError(f"{description}没有可训练样本：{relative_or_absolute(path)}")
+
+
+def require_nonempty_json_array(path: Path, description: str) -> None:
+    """确认导出的 JSON 数组至少有一条样本。"""
+    require_json_array(path, description, nonempty=True)
 
 
 def refuse_existing_run(path: Path, artifacts: Iterable[Path], args: argparse.Namespace) -> None:
@@ -515,7 +563,7 @@ def run_sft_audit(args: argparse.Namespace, python: str, stages: Sequence[str]) 
             str(args.val_ratio),
         ],
     )
-    lf_dir = LLAMAFACTORY_DATA_DIR / "generated"
+    lf_dir = LLAMAFACTORY_GENERATED_DIR
     if not args.dry_run:
         require_nonempty_json_array(lf_dir / f"{dataset_prefix}_train.json", "导出的 SFT train")
         require_nonempty_json_array(lf_dir / f"{dataset_prefix}_val.json", "导出的 SFT val")
@@ -650,7 +698,7 @@ def run_bestofn(args: argparse.Namespace, python: str, stages: Sequence[str]) ->
     refuse_existing_run(output_dir, [candidates], args)
     write_manifest(args, "bestofn", output_dir, stages)
     if not args.dry_run:
-        require_file(records, "Best-of-N 输入 records.jsonl")
+        require_nonempty_file(records, "Best-of-N 输入 records.jsonl")
 
     prompt_command = [
         python,
@@ -701,7 +749,7 @@ def run_bestofn(args: argparse.Namespace, python: str, stages: Sequence[str]) ->
     run_step(args, "Best-of-N 候选生成", candidate_command)
 
     prefix = bestofn_dataset_prefix(args, stages)
-    lf_dir = LLAMAFACTORY_DATA_DIR / "generated"
+    lf_dir = LLAMAFACTORY_GENERATED_DIR
     select_command = [
         python,
         str(BESTOFN_SELECT_SCRIPT),
@@ -743,8 +791,14 @@ def run_bestofn(args: argparse.Namespace, python: str, stages: Sequence[str]) ->
     if not args.dry_run:
         require_nonempty_json_array(lf_dir / f"{prefix}_sft_train.json", "导出的 Best-of-N SFT train")
         require_nonempty_json_array(lf_dir / f"{prefix}_sft_val.json", "导出的 Best-of-N SFT val")
+        require_json_array(lf_dir / f"{prefix}_pair_train.json", "导出的 Best-of-N DPO train")
+        require_json_array(lf_dir / f"{prefix}_pair_val.json", "导出的 Best-of-N DPO val")
+        require_file(output_dir / "selected.jsonl", "Best-of-N 选择结果")
+        require_file(output_dir / "selection_summary.json", "Best-of-N 选择摘要")
     run_validation_step(args, python, "sft", lf_dir / f"{prefix}_sft_train.json", "校验 Best-of-N SFT train")
+    run_validation_step(args, python, "sft", lf_dir / f"{prefix}_sft_val.json", "校验 Best-of-N SFT val")
     run_validation_step(args, python, "dpo", lf_dir / f"{prefix}_pair_train.json", "校验 Best-of-N DPO train")
+    run_validation_step(args, python, "dpo", lf_dir / f"{prefix}_pair_val.json", "校验 Best-of-N DPO val")
 
 
 def run_dpo(args: argparse.Namespace, python: str, stages: Sequence[str]) -> None:
@@ -836,7 +890,7 @@ def run_dpo(args: argparse.Namespace, python: str, stages: Sequence[str]) -> Non
     run_step(args, "DPO 强模型 judge", judge_command, env=usage_log_env(output_dir))
 
     prefix = dpo_dataset_prefix(args, stages)
-    lf_dir = LLAMAFACTORY_DATA_DIR / "generated"
+    lf_dir = LLAMAFACTORY_GENERATED_DIR
     pair_command = [
         python,
         str(DPO_PAIRS_SCRIPT),
@@ -934,7 +988,7 @@ def run_validate(args: argparse.Namespace, python: str, stages: Sequence[str]) -
 
     if not targets and "sft-audit" in stages:
         prefix = sft_dataset_prefix(args, stages)
-        lf_dir = LLAMAFACTORY_DATA_DIR / "generated"
+        lf_dir = LLAMAFACTORY_GENERATED_DIR
         targets.extend(
             [
                 ("sft", lf_dir / f"{prefix}_train.json", "校验 SFT train"),
@@ -943,7 +997,7 @@ def run_validate(args: argparse.Namespace, python: str, stages: Sequence[str]) -
         )
     if not targets and "dpo" in stages:
         prefix = dpo_dataset_prefix(args, stages)
-        lf_dir = LLAMAFACTORY_DATA_DIR / "generated"
+        lf_dir = LLAMAFACTORY_GENERATED_DIR
         targets.extend(
             [
                 ("dpo", lf_dir / f"{prefix}_train.json", "校验 DPO train"),
@@ -1264,13 +1318,13 @@ def build_training_overrides(
         if args.train_dataset_dir:
             dataset_dir = project_path(args.train_dataset_dir).resolve()
         elif generated_plan or args.train_dataset:
-            dataset_dir = LLAMAFACTORY_DATA_DIR.resolve()
+            dataset_dir = LLAMAFACTORY_DIR.resolve()
         else:
             configured_dataset_dir = config_scalar(config, "dataset_dir")
             dataset_dir = (
                 project_path(configured_dataset_dir).resolve()
                 if configured_dataset_dir
-                else LLAMAFACTORY_DATA_DIR.resolve()
+                else LLAMAFACTORY_DIR.resolve()
             )
         if validate_data and not args.dry_run:
             validate_registered_datasets(dataset_dir, split_dataset_names(train_name))
@@ -1401,30 +1455,26 @@ def selected_python_version(python: str) -> str:
     return version if result.returncode == 0 and version else "unknown"
 
 
-def run_preflight(args: argparse.Namespace, stages: Sequence[str], python: str) -> None:
-    required = {
-        "current SFT 入口": SFT_SCRIPT,
-        "SFT 预算审计": SFT_AUDIT_SCRIPT,
-        "SFT 可用性分类": SFT_CLASSIFY_SCRIPT,
-        "SFT 子集导出": SFT_EXPORT_SCRIPT,
-        "票价候选收集": PRICING_COLLECT_SCRIPT,
-        "票价候选分桶": PRICING_BUCKET_SCRIPT,
-        "强模型票价估价": PRICING_ESTIMATE_SCRIPT,
-        "冻结评估集构建": EVAL_DATA_SCRIPT,
-        "Best-of-N prompt": BESTOFN_PROMPTS_SCRIPT,
-        "Best-of-N 候选生成": BESTOFN_CANDIDATES_SCRIPT,
-        "Best-of-N 选择导出": BESTOFN_SELECT_SCRIPT,
-        "通用 DPO prompt": DPO_PROMPTS_SCRIPT,
-        "通用 DPO 候选生成": DPO_CANDIDATES_SCRIPT,
-        "通用 DPO judge": DPO_JUDGE_SCRIPT,
-        "通用 DPO pair 构造": DPO_PAIRS_SCRIPT,
-        "通用 DPO 审计": DPO_AUDIT_SCRIPT,
-        "评测入口": EVAL_PIPELINE_SCRIPT,
-        "TripPlan 校验入口": VALIDATION_SCRIPT,
-        "训练依赖文件": TRAINING_DIR / "requirements-training.txt",
-    }
-    if "train" in stages and not args.allow_unpatched_llamafactory:
+def required_files_for_stages(args: argparse.Namespace, stages: Sequence[str]) -> dict[str, Path]:
+    """返回当前调用真正会用到的入口文件。
+
+    单独执行 preflight 时检查整条主线；选择具体阶段时只检查该阶段，
+    避免读者做请求 smoke 时被无关的 DPO 或训练文件阻断。
+    """
+    selected = [stage for stage in stages if stage != "preflight"]
+    selected = selected or ALL_PIPELINE_STAGES
+    required: dict[str, Path] = {}
+    for stage in selected:
+        required.update(STAGE_FILE_REQUIREMENTS[stage])
+    if "pricing" in selected and args.estimate_prices:
+        required["强模型票价估价"] = PRICING_ESTIMATE_SCRIPT
+    if "train" in selected and not args.allow_unpatched_llamafactory:
         required["LLaMA-Factory 项目补丁"] = LLAMAFACTORY_PATCH
+    return required
+
+
+def run_preflight(args: argparse.Namespace, stages: Sequence[str], python: str) -> None:
+    required = required_files_for_stages(args, stages)
     missing = [(label, path) for label, path in required.items() if not path.is_file()]
     print(f"项目根目录：{PROJECT_ROOT}")
     print(f"Python：{python}")

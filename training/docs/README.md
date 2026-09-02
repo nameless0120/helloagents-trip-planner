@@ -10,4 +10,7 @@
 4. [评测指标](内部文档/评测指标.md)：说明 hard pass、soft pass 和预算指标。
 5. [LLaMA-Factory 本地改动说明](内部文档/DPO分块LogProb方案说明.md)：说明训练依赖的固定版本和补丁。
 
+`training/docs/后训练产物/` 只保存历史报告和实验记录，不提供当前可执行脚本。
+当前代码入口、阶段参数和输入输出关系以 `training/scripts/run_pipeline.py` 为准。
+
 目录规则见 [training/STRUCTURE.md](../STRUCTURE.md)。

@@ -11,26 +11,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-
-_FILE_PATH = Path(__file__).resolve()
-_ROOT_CANDIDATES = [
-    _FILE_PATH.parents[3],
-    _FILE_PATH.parents[4] if len(_FILE_PATH.parents) > 4 else _FILE_PATH.parents[3],
-]
-
-
-def _detect_project_root() -> Path:
-    for candidate in _ROOT_CANDIDATES:
-        if (candidate / "backend").exists() and (candidate / "training").exists():
-            return candidate
-    return _ROOT_CANDIDATES[0]
-
-
-PROJECT_ROOT = _detect_project_root()
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SCRIPTS_DIR = PROJECT_ROOT / "training" / "scripts"
 BACKEND_DIR = PROJECT_ROOT / "backend"
 sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(BACKEND_DIR))
+
+from shared.paths import EVAL_DATA_DIR, EVAL_OUTPUT_DIR  # noqa: E402
 
 from app.planner.output import (  # noqa: E402
     extract_json_object,
@@ -38,8 +25,8 @@ from app.planner.output import (  # noqa: E402
 from app.models.schemas import TripPlan  # noqa: E402
 
 
-DEFAULT_EVAL_RECORDS = PROJECT_ROOT / "training/data/planner/eval/records.jsonl"
-DEFAULT_EVAL_OUTPUT_DIR = PROJECT_ROOT / "training/outputs/eval"
+DEFAULT_EVAL_RECORDS = EVAL_DATA_DIR / "records.jsonl"
+DEFAULT_EVAL_OUTPUT_DIR = EVAL_OUTPUT_DIR
 WEATHER_KEYS = ["day_weather", "night_weather", "day_temp", "night_temp", "wind_direction", "wind_power"]
 
 

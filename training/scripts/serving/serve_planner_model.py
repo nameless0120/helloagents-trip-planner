@@ -53,7 +53,12 @@ import sys
 from pathlib import Path
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(_PROJECT_ROOT / "training/scripts"))
+
+from shared.paths import CONFIGS_DIR, OUTPUTS_DIR, PROJECT_ROOT  # noqa: E402
+
+
 WORKSPACE_ROOT = PROJECT_ROOT.parent
 LLAMA_FACTORY_ROOT = WORKSPACE_ROOT / "LLaMA-Factory"
 
@@ -69,9 +74,9 @@ DEFAULTS = {
 
 VARIANTS = {
     "base": None,
-    "sft": PROJECT_ROOT / "training/outputs/qwen25_7b/sft",
-    "dpo": PROJECT_ROOT / "training/outputs/qwen25_7b/dpo",
-    "sft_dpo": PROJECT_ROOT / "training/outputs/qwen25_7b/sft_dpo",
+    "sft": OUTPUTS_DIR / "qwen25_7b/sft",
+    "dpo": OUTPUTS_DIR / "qwen25_7b/dpo",
+    "sft_dpo": OUTPUTS_DIR / "qwen25_7b/sft_dpo",
 }
 
 
@@ -246,7 +251,7 @@ def main() -> int:
 
     config_out = args.config_out
     if config_out is None:
-        config_out = PROJECT_ROOT / f"training/configs/qwen25_7b/.serve_qwen25_7b_{args.variant}.yaml"
+        config_out = CONFIGS_DIR / "qwen25_7b" / f".serve_qwen25_7b_{args.variant}.yaml"
     config_out = config_out.expanduser().resolve()
     config_out.parent.mkdir(parents=True, exist_ok=True)
     config_out.write_text(build_config(args, adapter), encoding="utf-8")

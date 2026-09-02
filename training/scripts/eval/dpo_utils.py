@@ -16,11 +16,8 @@ from eval_utils import (
     weather_bucket,
     write_json,
 )
+from shared.paths import DPO_DIR, LLAMAFACTORY_DIR, LLAMAFACTORY_GENERATED_DIR
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DPO_DIR = PROJECT_ROOT / "training/data/planner/dpo"
-LLAMAFACTORY_DIR = PROJECT_ROOT / "training/data/llamafactory"
 DATASET_INFO_PATH = LLAMAFACTORY_DIR / "dataset_info.json"
 
 DEFAULT_DPO_PROMPTS = DPO_DIR / "prompts.jsonl"

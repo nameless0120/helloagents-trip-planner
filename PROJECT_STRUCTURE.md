@@ -30,7 +30,7 @@ training/
     ├── eval/               # DPO 和通用评测
     ├── serving/            # Planner 模型服务
     ├── validation/         # 输出校验
-    └── shared/              # 公共 helper
+    └── shared/              # 公共 helper 和当前路径定义
 ```
 
 ## 后训练开始位置
@@ -42,6 +42,9 @@ training/scripts/run_pipeline.py
   -> training/data/llamafactory/generated/
   -> LLaMA-Factory
 ```
+
+当前脚本使用的目录都集中定义在 `training/scripts/shared/paths.py`。新增代码应复用
+这里的路径，不要再写一套带日期或版本号的训练目录别名。
 
 读者版命令见 [README.md](README.md) 的“后训练快速开始”，完整步骤见 [后训练实战教程](training/docs/教程/旅行助手后训练实战教程.md)。
 

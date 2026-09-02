@@ -42,7 +42,7 @@ class TripRequest(BaseModel):
     travel_days: int = Field(..., description="旅行天数", ge=1, le=30, example=3)
     transportation: str = Field(..., description="交通方式", example="公共交通")
     accommodation: str = Field(..., description="住宿偏好", example="经济型酒店")
-    preferences: List[str] = Field(default=[], description="旅行偏好标签", example=["历史文化", "美食"])
+    preferences: List[str] = Field(default_factory=list, description="旅行偏好标签", example=["历史文化", "美食"])
     free_text_input: Optional[str] = Field(default="", description="额外要求", example="希望多安排一些博物馆")
     party: PartyInfo = Field(..., description="同行人数")
     budget_constraint: BudgetConstraint = Field(..., description="预算约束")
@@ -145,8 +145,8 @@ class DayPlan(BaseModel):
     transportation: str = Field(..., description="交通方式")
     accommodation: str = Field(..., description="住宿")
     hotel: Optional[Hotel] = Field(default=None, description="推荐酒店")
-    attractions: List[Attraction] = Field(default=[], description="景点列表")
-    meals: List[Meal] = Field(default=[], description="餐饮列表")
+    attractions: List[Attraction] = Field(default_factory=list, description="景点列表")
+    meals: List[Meal] = Field(default_factory=list, description="餐饮列表")
 
 
 class WeatherInfo(BaseModel):
@@ -188,7 +188,7 @@ class TripPlan(BaseModel):
     start_date: str = Field(..., description="开始日期")
     end_date: str = Field(..., description="结束日期")
     days: List[DayPlan] = Field(..., description="每日行程")
-    weather_info: List[WeatherInfo] = Field(default=[], description="天气信息")
+    weather_info: List[WeatherInfo] = Field(default_factory=list, description="天气信息")
     overall_suggestions: str = Field(..., description="总体建议")
     budget: Optional[Budget] = Field(default=None, description="预算信息")
 
@@ -214,7 +214,7 @@ class POISearchResponse(BaseModel):
     """POI搜索响应"""
     success: bool = Field(..., description="是否成功")
     message: str = Field(default="", description="消息")
-    data: List[POIInfo] = Field(default=[], description="POI列表")
+    data: List[POIInfo] = Field(default_factory=list, description="POI列表")
 
 
 class RouteInfo(BaseModel):
@@ -236,7 +236,7 @@ class WeatherResponse(BaseModel):
     """天气查询响应"""
     success: bool = Field(..., description="是否成功")
     message: str = Field(default="", description="消息")
-    data: List[WeatherInfo] = Field(default=[], description="天气信息")
+    data: List[WeatherInfo] = Field(default_factory=list, description="天气信息")
 
 
 # ============ 错误响应 ============

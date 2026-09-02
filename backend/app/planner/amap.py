@@ -17,8 +17,9 @@ AMAP_BASE_URL = "https://restapi.amap.com/v3"
 AMAP_HTTP_TIMEOUT = int(os.getenv("AMAP_HTTP_TIMEOUT", "30"))
 AMAP_SEARCH_OFFSET = int(os.getenv("AMAP_SEARCH_OFFSET", "20"))
 PLANNER_CONTEXT_PER_KEYWORD_LIMIT = int(os.getenv("PLANNER_CONTEXT_PER_KEYWORD_LIMIT", "5"))
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 PLANNER_CONTEXT_CACHE_DIR = Path(
-    os.getenv("PLANNER_CONTEXT_CACHE_DIR", "training/data/cache/planner_context")
+    os.getenv("PLANNER_CONTEXT_CACHE_DIR", str(PROJECT_ROOT / "training/data/cache/planner_context"))
 )
 PLANNER_CONTEXT_CACHE_TTL_SECONDS = int(
     os.getenv("PLANNER_CONTEXT_CACHE_TTL_SECONDS", str(60 * 24 * 60 * 60))

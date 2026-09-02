@@ -1,6 +1,6 @@
 # Training 目录约定
 
-`training/` 只保留当前代码、当前协议和可复用输入。运行产生的大文件、日志、模型权重和临时数据由 `.gitignore` 排除。
+`training/` 包含当前代码、当前协议、可复用输入和历史报告。运行产生的大文件、日志、模型权重和临时数据由 `.gitignore` 排除；历史报告归档不承担当前运行入口。
 
 ## 目录职责
 
@@ -20,7 +20,7 @@
 | `scripts/eval/` | 通用评测和 DPO |
 | `scripts/serving/` | Planner 模型服务 |
 | `scripts/validation/` | SFT、DPO、评测数据校验 |
-| `scripts/shared/` | JSONL、路径和 LLM 客户端公共代码 |
+| `scripts/shared/` | JSONL、当前路径定义和 LLM 客户端公共代码 |
 | `outputs/eval/` | 本地评测输出目录，只提交入口说明 |
 
 ## 数据生命周期
@@ -33,8 +33,10 @@
 
 ## 入口规则
 
-- SFT 数据从 `scripts/planner/data/generate_sft_data.py` 开始。
+- SFT 数据由 `scripts/run_pipeline.py --stage sft-data` 调度，底层实现是
+  `scripts/planner/data/generate_sft_data.py`。
 - 完整流程从 `scripts/run_pipeline.py` 开始。
 - 训练使用 `configs/qwen25_7b/sft_qwen25_7b_lora.yaml` 或 `dpo_qwen25_7b_lora.yaml`。
 - 长上下文 DPO 训练前先应用 `patches/llamafactory-9a0cfdcc-local.patch`。
+- 当前运行目录由 `scripts/shared/paths.py` 统一定义。
 - 新脚本必须在对应目录 README 和总入口中有明确用途；没有当前调用关系的实验工具不放入主线。

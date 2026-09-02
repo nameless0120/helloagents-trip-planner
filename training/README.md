@@ -8,6 +8,7 @@
 SFT 数据生成
   -> SFT 数据审计/导出
   -> SFT 训练
+  -> Best-of-N 数据增强 / 多候选 rerank（可选，但最终有效）
   -> DPO 数据构造和训练
   -> 模型评测出结果
 ```
@@ -38,6 +39,15 @@ DATA_GEN_MODEL=your_model_name
 DATA_GEN_THINKING=false
 ```
 
+## 配套数据下载，可选
+
+如果你想先看现成数据和评测产物，不想一上来就调用 API 生成，可以下载配套材料包：
+
+- 名称：`helloagents-后训练数据`
+- 链接：<https://pan.baidu.com/s/5oNsK7pwQnqzQEUg5ykb09Q>
+
+这份数据适合先对照流程。真正复现 LoRA 时，仍然建议按下面命令自己跑一轮，并保留每轮的 `pipeline_manifest.json`、usage 日志和审计报告。
+
 先做不联网检查：
 
 ```bash
@@ -52,6 +62,8 @@ DATA_GEN_THINKING=false
 export RUN_NAME="$(date +%Y%m%d_%H%M%S)_reader"
 export SFT_RUN="training/data/planner/sft_runs/${RUN_NAME}"
 export SFT_DATASET="trip_planner_sft_${RUN_NAME}"
+export BESTOFN_RUN="training/data/planner/bestofn/${RUN_NAME}"
+export BESTOFN_DATASET="trip_planner_bestofn_${RUN_NAME}"
 export DPO_RUN="training/data/planner/dpo/${RUN_NAME}"
 export DPO_DATASET="trip_planner_dpo_${RUN_NAME}"
 ```
@@ -96,7 +108,41 @@ export DPO_DATASET="trip_planner_dpo_${RUN_NAME}"
 
 这一步只训练，不会重新生成数据。
 
-### 4. DPO 微调
+### 4. Best-of-N 数据增强
+
+Best-of-N 是当前保留的有效阶段。它会让 SFT 模型对同一份 `PlannerContext` 生成多个候选，再用规则选出更好的答案，导出新的 SFT 样本和 DPO pair。历史报告里的日期化 `.sh` 启动脚本不再作为入口；当前入口是 `run_pipeline.py --stage bestofn`。
+
+先启动 SFT 服务：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/serving/manage_planner_service.py \
+  start-all \
+  --services sft \
+  --sft-devices 6 \
+  --sft-adapter-path training/outputs/qwen25_7b/sft
+```
+
+然后生成并选择候选：
+
+```bash
+.venv-training-py311/bin/python3 training/scripts/run_pipeline.py \
+  --stage bestofn \
+  --records "$SFT_RUN/export_budget_clean/records.jsonl" \
+  --bestofn-dir "$BESTOFN_RUN" \
+  --bestofn-dataset-prefix "$BESTOFN_DATASET" \
+  --bestofn-base-url http://127.0.0.1:4396/v1 \
+  --bestofn-api-model trip-planner-sft \
+  --bestofn-spec t02:0.2:1 \
+  --bestofn-spec t05:0.5:2 \
+  --bestofn-spec t08:0.8:1 \
+  --workers 1
+```
+
+输出会登记为 `${BESTOFN_DATASET}_sft_train`、`${BESTOFN_DATASET}_sft_val`、`${BESTOFN_DATASET}_pair_train` 和 `${BESTOFN_DATASET}_pair_val`。要继续做 Best-of-N replay SFT 时，把训练命令里的数据集名换成 `${BESTOFN_DATASET}_sft_train` 和 `${BESTOFN_DATASET}_sft_val`。
+
+产品侧的多候选 rerank 在 `backend/app/planner/rerank.py`，默认由 `PLANNER_ENABLE_RERANK=1` 开启，`PLANNER_RERANK_CANDIDATE_COUNT` 控制候选数。
+
+### 5. DPO 微调
 
 DPO 数据构造要先启动 base 和 SFT 服务：
 
@@ -127,7 +173,7 @@ DPO 数据构造要先启动 base 和 SFT 服务：
 
 这一步会构造 prompt、生成多来源候选、judge、导出 pair、审计 DPO 数据，再进入 LLaMA-Factory DPO。
 
-### 5. 评测出结果
+### 6. 评测出结果
 
 DPO 训练完成后，启动 DPO 服务：
 

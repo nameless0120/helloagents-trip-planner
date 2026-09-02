@@ -3,25 +3,21 @@
 from __future__ import annotations
 
 import json
-import os
 import random
 import re
+import sys
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 
+# 允许直接从仓库根目录执行这个公共模块做导入检查；正式流程仍由具体入口调用。
+SCRIPTS_DIR = Path(__file__).resolve().parents[1]
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-TRAINING_DIR = PROJECT_ROOT / "training"
-DATA_DIR = TRAINING_DIR / "data"
-SFT_DIR = DATA_DIR / "sft"
-SFT_RUNTIME_DIR = DATA_DIR / "sft_runtime"
-SFT_FORMAT_DIR = DATA_DIR / "sft_format"
-DPO_DIR = DATA_DIR / "dpo"
-EVAL_DIR = DATA_DIR / "eval"
-LLAMAFACTORY_DIR = DATA_DIR / "llamafactory"
+from shared.paths import PROJECT_ROOT
 
 
 def load_project_env() -> None:
@@ -31,12 +27,6 @@ def load_project_env() -> None:
     helloagents_env = PROJECT_ROOT.parent / "HelloAgents" / ".env"
     if helloagents_env.exists():
         load_dotenv(helloagents_env, override=False)
-
-
-def ensure_data_dirs() -> None:
-    """创建数据输出目录。"""
-    for path in (DATA_DIR, SFT_DIR, SFT_RUNTIME_DIR, SFT_FORMAT_DIR, DPO_DIR, EVAL_DIR, LLAMAFACTORY_DIR):
-        path.mkdir(parents=True, exist_ok=True)
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -119,47 +109,3 @@ def extract_json(text: str) -> Any:
     if end <= start:
         raise ValueError("模型输出中没有完整 JSON")
     return json.loads(stripped[start : end + 1])
-
-
-def get_required_env(name: str) -> str:
-    """读取必需环境变量。"""
-    value = os.getenv(name)
-    if not value:
-        raise RuntimeError(f"缺少环境变量: {name}")
-    return value
-
-
-def write_dataset_info() -> None:
-    """写入 LLaMA-Factory 本地 dataset_info.json。"""
-    write_json(
-        LLAMAFACTORY_DIR / "dataset_info.json",
-        {
-            "trip_sft_train": {"file_name": "trip_sft_train.json"},
-            "trip_sft_val": {"file_name": "trip_sft_val.json"},
-            "trip_sft_runtime_train": {"file_name": "trip_sft_runtime_train.json"},
-            "trip_sft_runtime_val": {"file_name": "trip_sft_runtime_val.json"},
-            "trip_sft_format_train": {"file_name": "trip_sft_format_train.json"},
-            "trip_sft_format_val": {"file_name": "trip_sft_format_val.json"},
-            "trip_dpo_train": {
-                "file_name": "trip_dpo_train.json",
-                "ranking": True,
-                "formatting": "sharegpt",
-                "columns": {
-                    "messages": "conversations",
-                    "chosen": "chosen",
-                    "rejected": "rejected",
-                },
-            },
-            "trip_dpo_val": {
-                "file_name": "trip_dpo_val.json",
-                "ranking": True,
-                "formatting": "sharegpt",
-                "columns": {
-                    "messages": "conversations",
-                    "chosen": "chosen",
-                    "rejected": "rejected",
-                },
-            },
-            "trip_eval_gt": {"file_name": "trip_eval_gt.json"},
-        },
-    )

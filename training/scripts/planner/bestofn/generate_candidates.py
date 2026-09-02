@@ -29,10 +29,11 @@ sys.path.insert(0, str(SHARED_SCRIPTS_DIR))
 from eval_rule_metrics import evaluate_output  # noqa: E402
 from eval_utils import append_jsonl, planner_max_output_tokens, read_jsonl, write_json  # noqa: E402
 from shared.common import load_project_env  # noqa: E402
+from shared.paths import BESTOFN_DIR  # noqa: E402
 
 
-DEFAULT_PROMPTS = PROJECT_ROOT / "training/data/planner/bestofn/prompts.jsonl"
-DEFAULT_OUTPUT = PROJECT_ROOT / "training/data/planner/bestofn/candidates.jsonl"
+DEFAULT_PROMPTS = BESTOFN_DIR / "prompts.jsonl"
+DEFAULT_OUTPUT = BESTOFN_DIR / "candidates.jsonl"
 
 
 @dataclass(frozen=True)

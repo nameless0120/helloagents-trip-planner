@@ -63,12 +63,14 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 SCRIPTS_DIR = PROJECT_ROOT / "training" / "scripts"
+DATA_SCRIPT_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = PROJECT_ROOT / "backend"
-sys.path.insert(0, str(SCRIPTS_DIR))
+sys.path[:0] = [str(DATA_SCRIPT_DIR), str(SCRIPTS_DIR)]
 sys.path.insert(0, str(BACKEND_DIR))
 
-from shared.common import DATA_DIR, LLAMAFACTORY_DIR, load_project_env, read_jsonl, split_train_val, write_json  # noqa: E402
+from shared.common import load_project_env, read_jsonl, split_train_val, write_json  # noqa: E402
 from shared.llm_client import DataGenLLM  # noqa: E402
+from shared.paths import LLAMAFACTORY_DIR, LLAMAFACTORY_GENERATED_DIR, SFT_RUNS_DIR  # noqa: E402
 
 
 from app.planner.context import PlannerContextBuilder  # noqa: E402
@@ -80,11 +82,10 @@ from app.models.schemas import Budget, TripPlan, TripRequest  # noqa: E402
 from historical_weather import fetch_historical_trip_weather, is_past_trip  # noqa: E402
 
 
-DEFAULT_SFT_DIR = DATA_DIR / "planner" / "sft_runs" / "default"
+DEFAULT_SFT_DIR = SFT_RUNS_DIR / "default"
 RAW_RECORDS_PATH = DEFAULT_SFT_DIR / "records.jsonl"
 ERRORS_PATH = DEFAULT_SFT_DIR / "errors.jsonl"
 REQUESTS_PATH = DEFAULT_SFT_DIR / "requests.jsonl"
-LLAMAFACTORY_GENERATED_DIR = LLAMAFACTORY_DIR / "generated"
 LLAMAFACTORY_TRAIN_PATH = LLAMAFACTORY_GENERATED_DIR / "trip_sft_train.json"
 LLAMAFACTORY_VAL_PATH = LLAMAFACTORY_GENERATED_DIR / "trip_sft_val.json"
 DATASET_INFO_PATH = LLAMAFACTORY_DIR / "dataset_info.json"
@@ -546,6 +547,73 @@ def planner_max_output_tokens(request: TripRequest, args: argparse.Namespace, sa
     return min(args.output_base_tokens + request.travel_days * args.output_tokens_per_day + retry_extra, args.output_tokens_cap)
 
 
+def _coerce_party_count(value: Any, field: str) -> int:
+    """把模型生成的人数转成整数；无法判断时让当前请求重试。"""
+    if value is None or value == "":
+        return 0
+    if isinstance(value, bool):
+        raise ValueError(f"party.{field} 不能是布尔值")
+    try:
+        number = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"party.{field} 不是整数: {value!r}") from exc
+    if isinstance(value, float) and value != number:
+        raise ValueError(f"party.{field} 不是整数: {value!r}")
+    return number
+
+
+def normalize_party_info(
+    raw_party: Any,
+    *,
+    rng: random.Random,
+    companion_type: str,
+) -> dict[str, Any]:
+    """把模型可能生成的部分 party 补成严格的 PartyInfo 结构。
+
+    请求 schema 仍然要求 total 等于 adults、children、elders 之和。
+    这里只修复数据生成阶段常见的部分对象，例如 ``{"total": 2}``；
+    明显非法的人数仍交给 Pydantic 报错并触发当前样本重试。
+    """
+    if not isinstance(raw_party, dict) or not raw_party:
+        return build_party_info(rng, companion_type)
+
+    raw_companion_type = raw_party.get("companion_type") or companion_type or "other"
+    normalized_companion_type = str(raw_companion_type).strip() or "other"
+    count_fields = ("adults", "children", "elders")
+    has_component = any(
+        field in raw_party and raw_party.get(field) not in (None, "")
+        for field in count_fields
+    )
+    raw_total = (
+        _coerce_party_count(raw_party.get("total"), "total")
+        if raw_party.get("total") not in (None, "")
+        else None
+    )
+
+    if not has_component and raw_total is None:
+        return build_party_info(rng, normalized_companion_type)
+
+    children = _coerce_party_count(raw_party.get("children"), "children")
+    elders = _coerce_party_count(raw_party.get("elders"), "elders")
+    if "adults" not in raw_party and raw_total is not None:
+        adults = raw_total - children - elders
+        if adults < 0:
+            raise ValueError(
+                "party.total 小于已给出的 children+elders，无法补齐 adults: "
+                f"total={raw_total}, children={children}, elders={elders}"
+            )
+    else:
+        adults = _coerce_party_count(raw_party.get("adults"), "adults")
+
+    return {
+        "adults": adults,
+        "children": children,
+        "elders": elders,
+        "total": adults + children + elders,
+        "companion_type": normalized_companion_type,
+    }
+
+
 def normalize_request(data: dict[str, Any], request_id: str) -> TripRequest:
     """把 LLM/模板生成的请求规范成 TripRequest。"""
     item = dict(data)
@@ -565,10 +633,15 @@ def normalize_request(data: dict[str, Any], request_id: str) -> TripRequest:
     start_date = date.fromisoformat(str(item["start_date"]))
     item["end_date"] = (start_date + timedelta(days=travel_days - 1)).isoformat()
 
-    if not item.get("party"):
-        companion_type = control_spec.get("companion_type") or "other"
-        rng = random.Random(sum(ord(ch) for ch in request_id))
-        item["party"] = build_party_info(rng, companion_type)
+    raw_party = item.get("party")
+    party_companion_type = raw_party.get("companion_type") if isinstance(raw_party, dict) else None
+    companion_type = control_spec.get("companion_type") or party_companion_type or "other"
+    rng = random.Random(sum(ord(ch) for ch in request_id))
+    item["party"] = normalize_party_info(
+        raw_party,
+        rng=rng,
+        companion_type=str(companion_type),
+    )
 
     if not item.get("budget_constraint"):
         budget_level = control_spec.get("budget_level") or "standard"
@@ -1512,6 +1585,13 @@ request_id 必须是: {request_id}
             # 这里提前跑一次 schema 规范化，尽早发现脏请求。
             request = normalize_request(result, request_id)
             validate_request_date_mode(request, args.date_mode)
+            # 让后续 requests.jsonl 也保存同一份规范化请求，避免审计阶段再次
+            # 读到只有 total、没有 adults/children/elders 的部分 party。
+            result["travel_days"] = request.travel_days
+            result["start_date"] = request.start_date
+            result["end_date"] = request.end_date
+            result["party"] = request.party.model_dump()
+            result["budget_constraint"] = request.budget_constraint.model_dump()
             return result
         except Exception as exc:  # noqa: BLE001
             last_error = exc

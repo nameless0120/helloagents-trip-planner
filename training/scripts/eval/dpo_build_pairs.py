@@ -22,7 +22,7 @@ from dpo_utils import (
     DEFAULT_DPO_PAIRS_TRAIN,
     DEFAULT_DPO_PAIRS_VAL,
     DEFAULT_DPO_PROMPTS,
-    LLAMAFACTORY_DIR,
+    LLAMAFACTORY_GENERATED_DIR,
     hard_filter_pass,
     read_jsonl,
     safe_counter,
@@ -189,7 +189,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, default=DEFAULT_DPO_PAIRS)
     parser.add_argument("--train-output", type=Path, default=DEFAULT_DPO_PAIRS_TRAIN)
     parser.add_argument("--val-output", type=Path, default=DEFAULT_DPO_PAIRS_VAL)
-    parser.add_argument("--lf-output-dir", type=Path, default=LLAMAFACTORY_DIR / "generated")
+    parser.add_argument("--lf-output-dir", type=Path, default=LLAMAFACTORY_GENERATED_DIR)
     parser.add_argument("--lf-copy-dir", type=Path, default=None, help="可选：在本轮输出目录保存一份 LLaMA-Factory 副本。")
     parser.add_argument("--lf-train-file", default="trip_dpo_train.json")
     parser.add_argument("--lf-val-file", default="trip_dpo_val.json")

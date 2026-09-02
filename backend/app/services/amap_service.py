@@ -23,7 +23,7 @@ def get_amap_mcp_tool() -> MCPTool:
         settings = get_settings()
 
         if not settings.amap_api_key:
-            raise ValueError("高德地图API Key未配置,请在.env文件中设置AMAP_API_KEY")
+            raise ValueError("高德地图 API Key 未配置，请在 .env 文件中设置 AMAP_API_KEY 或 AMAP_MAPS_API_KEY")
 
         # 创建MCP工具
         _amap_mcp_tool = MCPTool(
